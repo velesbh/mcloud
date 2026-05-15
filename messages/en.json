@@ -1,0 +1,271 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "back": "Back",
+    "next": "Next",
+    "confirm": "Confirm",
+    "close": "Close",
+    "search": "Search",
+    "noResults": "No results found",
+    "error": "Something went wrong",
+    "tryAgain": "Try again",
+    "learnMore": "Learn more",
+    "copyToClipboard": "Copy to clipboard",
+    "copied": "Copied!"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "servers": "My Servers",
+    "upgrade": "Upgrade",
+    "account": "Account",
+    "admin": "Admin",
+    "docs": "Docs",
+    "settings": "Settings",
+    "signOut": "Sign Out",
+    "signIn": "Sign In",
+    "signUp": "Get Started"
+  },
+  "theme": {
+    "dark": "Dark",
+    "light": "Light",
+    "toggle": "Toggle theme"
+  },
+  "landing": {
+    "hero": "Host Minecraft Servers, Effortlessly",
+    "heroSub": "Create, manage, and share your Minecraft server in seconds. No technical knowledge required.",
+    "cta": "Start for Free",
+    "features": {
+      "simple": "Simple as Realms",
+      "simpleDesc": "If you can click a button, you can run a server.",
+      "mods": "Mods & Plugins",
+      "modsDesc": "Browse and install from thousands of Modrinth projects instantly.",
+      "backups": "Automatic Backups",
+      "backupsDesc": "Never lose your world. One click to restore.",
+      "console": "Live Console",
+      "consoleDesc": "Monitor and control your server in real time."
+    },
+    "free": "Free tier available",
+    "freeSub": "Start with 1 free server, 1GB RAM included."
+  },
+  "auth": {
+    "signIn": "Sign in to MCloud",
+    "signUp": "Create your MCloud account",
+    "welcomeBack": "Welcome back",
+    "createAccount": "Create an account"
+  },
+  "dashboard": {
+    "title": "My Servers",
+    "newServer": "New Server",
+    "empty": "No servers yet",
+    "emptyDesc": "Create your first Minecraft server in seconds.",
+    "createFirst": "Create your first server"
+  },
+  "server": {
+    "status": {
+      "creating": "Creating",
+      "offline": "Offline",
+      "starting": "Starting",
+      "running": "Online",
+      "stopping": "Stopping",
+      "restarting": "Restarting",
+      "error": "Error",
+      "suspended": "Suspended"
+    },
+    "actions": {
+      "start": "Start",
+      "stop": "Stop",
+      "restart": "Restart",
+      "starting": "Starting...",
+      "stopping": "Stopping...",
+      "restarting": "Restarting...",
+      "confirmStop": "Stop your server?",
+      "confirmStopDesc": "Players will be disconnected.",
+      "confirmDelete": "Delete this server?",
+      "confirmDeleteDesc": "This action cannot be undone. All data will be permanently deleted."
+    },
+    "tabs": {
+      "overview": "Overview",
+      "console": "Console",
+      "files": "Files",
+      "mods": "Mods",
+      "backups": "Backups",
+      "settings": "Settings"
+    },
+    "create": {
+      "title": "New Server",
+      "step1": "Name & Edition",
+      "step2": "Version & Loader",
+      "step3": "Region & Resources",
+      "namePlaceholder": "My Awesome Server",
+      "nameLabel": "Server Name",
+      "edition": "Edition",
+      "java": "Java Edition",
+      "bedrock": "Bedrock Edition",
+      "version": "Minecraft Version",
+      "loader": "Server Software",
+      "region": "Region",
+      "ram": "RAM",
+      "creating": "Creating your server...",
+      "success": "Server created!"
+    },
+    "overview": {
+      "address": "Server Address",
+      "players": "Players",
+      "uptime": "Uptime",
+      "ram": "RAM Usage",
+      "cpu": "CPU Usage",
+      "disk": "Disk Usage"
+    },
+    "console": {
+      "title": "Console",
+      "placeholder": "Type a command and press Enter...",
+      "connecting": "Connecting to console...",
+      "connected": "Console connected",
+      "disconnected": "Console disconnected"
+    },
+    "files": {
+      "title": "File Manager",
+      "upload": "Upload",
+      "newFolder": "New Folder",
+      "rename": "Rename",
+      "download": "Download",
+      "selectFile": "Select a file to view or edit",
+      "saving": "Saving...",
+      "saved": "Saved",
+      "noFiles": "No files yet"
+    },
+    "mods": {
+      "title": "Mods & Plugins",
+      "search": "Search Modrinth...",
+      "installed": "Installed",
+      "browse": "Browse",
+      "install": "Install",
+      "installing": "Installing...",
+      "uninstall": "Uninstall",
+      "noMods": "No mods installed",
+      "filterType": "Type",
+      "filterLoader": "Loader",
+      "filterVersion": "MC Version",
+      "types": {
+        "mod": "Mod",
+        "plugin": "Plugin",
+        "modpack": "Modpack",
+        "datapack": "Datapack"
+      }
+    },
+    "backups": {
+      "title": "Backups",
+      "create": "Create Backup",
+      "restore": "Restore",
+      "restoring": "Restoring...",
+      "noBackups": "No backups yet",
+      "noBackupsDesc": "Create a backup to protect your world.",
+      "nameLabel": "Backup Name",
+      "namePlaceholder": "Before big update",
+      "confirmRestore": "Restore this backup?",
+      "confirmRestoreDesc": "Current server files will be replaced.",
+      "confirmDelete": "Delete this backup?",
+      "size": "Size",
+      "created": "Created"
+    },
+    "settings": {
+      "title": "Server Settings",
+      "general": "General",
+      "name": "Server Name",
+      "motd": "Message of the Day",
+      "maxPlayers": "Max Players",
+      "advanced": "Advanced",
+      "ram": "RAM (MB)",
+      "cpu": "CPU Limit (%)",
+      "javaFlags": "Java Flags",
+      "saved": "Settings saved"
+    }
+  },
+  "admin": {
+    "title": "Admin Panel",
+    "overview": "Overview",
+    "nodes": {
+      "title": "Nodes",
+      "add": "Add Node",
+      "name": "Node Name",
+      "fqdn": "FQDN / Hostname",
+      "ip": "IP Address",
+      "region": "Region",
+      "ram": "Total RAM (MB)",
+      "cpu": "Total CPU (%)",
+      "disk": "Total Disk (MB)",
+      "status": "Status",
+      "servers": "Servers",
+      "allocations": "Allocations"
+    },
+    "regions": {
+      "title": "Regions",
+      "add": "Add Region",
+      "name": "Region Name",
+      "slug": "Slug",
+      "description": "Description",
+      "flag": "Flag Emoji"
+    },
+    "allocations": {
+      "title": "Allocations",
+      "add": "Add Allocation",
+      "ip": "IP Address",
+      "port": "Port",
+      "node": "Node",
+      "server": "Assigned Server",
+      "unassigned": "Unassigned",
+      "assign": "Assign",
+      "unassign": "Unassign"
+    },
+    "users": {
+      "title": "Users",
+      "email": "Email",
+      "role": "Role",
+      "servers": "Servers",
+      "joined": "Joined"
+    },
+    "servers": {
+      "title": "All Servers",
+      "migrate": "Migrate",
+      "migrateTitle": "Migrate Server",
+      "migrateDesc": "Move this server to a different node.",
+      "targetNode": "Target Node"
+    },
+    "metrics": {
+      "totalServers": "Total Servers",
+      "runningServers": "Running",
+      "totalUsers": "Users",
+      "totalNodes": "Nodes"
+    }
+  },
+  "legal": {
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service",
+    "aup": "Acceptable Use Policy",
+    "lastUpdated": "Last Updated",
+    "contact": "Contact Us"
+  },
+  "errors": {
+    "serverLimit": "You've reached your server limit",
+    "serverLimitDesc": "Free tier allows {max} server. Upgrade for more.",
+    "ramLimit": "RAM exceeds your plan limit ({max} MB)",
+    "diskLimit": "Disk exceeds your plan limit ({max} MB)",
+    "notFound": "Not found",
+    "unauthorized": "Unauthorized",
+    "forbidden": "Forbidden",
+    "serverError": "Server error"
+  },
+  "footer": {
+    "company": "Enzonic LLC",
+    "rights": "All rights reserved.",
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service",
+    "aup": "Acceptable Use",
+    "contact": "Contact"
+  }
+}

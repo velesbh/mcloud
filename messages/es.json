@@ -1,0 +1,271 @@
+{
+  "common": {
+    "loading": "Cargando...",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "create": "Crear",
+    "back": "Volver",
+    "next": "Siguiente",
+    "confirm": "Confirmar",
+    "close": "Cerrar",
+    "search": "Buscar",
+    "noResults": "Sin resultados",
+    "error": "Algo salió mal",
+    "tryAgain": "Intentar de nuevo",
+    "learnMore": "Saber más",
+    "copyToClipboard": "Copiar al portapapeles",
+    "copied": "¡Copiado!"
+  },
+  "nav": {
+    "dashboard": "Panel",
+    "servers": "Mis Servidores",
+    "upgrade": "Mejorar",
+    "account": "Cuenta",
+    "admin": "Admin",
+    "docs": "Documentación",
+    "settings": "Configuración",
+    "signOut": "Cerrar Sesión",
+    "signIn": "Iniciar Sesión",
+    "signUp": "Comenzar Gratis"
+  },
+  "theme": {
+    "dark": "Oscuro",
+    "light": "Claro",
+    "toggle": "Cambiar tema"
+  },
+  "landing": {
+    "hero": "Servidores de Minecraft, Sin Complicaciones",
+    "heroSub": "Crea, gestiona y comparte tu servidor de Minecraft en segundos. Sin conocimientos técnicos.",
+    "cta": "Comenzar Gratis",
+    "features": {
+      "simple": "Tan Simple como Realms",
+      "simpleDesc": "Si puedes hacer clic, puedes tener un servidor.",
+      "mods": "Mods y Plugins",
+      "modsDesc": "Explora e instala miles de proyectos de Modrinth al instante.",
+      "backups": "Copias de Seguridad",
+      "backupsDesc": "Nunca pierdas tu mundo. Un clic para restaurar.",
+      "console": "Consola en Vivo",
+      "consoleDesc": "Monitorea y controla tu servidor en tiempo real."
+    },
+    "free": "Nivel gratuito disponible",
+    "freeSub": "Comienza con 1 servidor gratis, 1GB de RAM incluido."
+  },
+  "auth": {
+    "signIn": "Inicia sesión en MCloud",
+    "signUp": "Crea tu cuenta de MCloud",
+    "welcomeBack": "Bienvenido de vuelta",
+    "createAccount": "Crear una cuenta"
+  },
+  "dashboard": {
+    "title": "Mis Servidores",
+    "newServer": "Nuevo Servidor",
+    "empty": "Sin servidores aún",
+    "emptyDesc": "Crea tu primer servidor de Minecraft en segundos.",
+    "createFirst": "Crear tu primer servidor"
+  },
+  "server": {
+    "status": {
+      "creating": "Creando",
+      "offline": "Desconectado",
+      "starting": "Iniciando",
+      "running": "En línea",
+      "stopping": "Deteniendo",
+      "restarting": "Reiniciando",
+      "error": "Error",
+      "suspended": "Suspendido"
+    },
+    "actions": {
+      "start": "Iniciar",
+      "stop": "Detener",
+      "restart": "Reiniciar",
+      "starting": "Iniciando...",
+      "stopping": "Deteniendo...",
+      "restarting": "Reiniciando...",
+      "confirmStop": "¿Detener el servidor?",
+      "confirmStopDesc": "Los jugadores serán desconectados.",
+      "confirmDelete": "¿Eliminar este servidor?",
+      "confirmDeleteDesc": "Esta acción no se puede deshacer. Todos los datos serán eliminados permanentemente."
+    },
+    "tabs": {
+      "overview": "Resumen",
+      "console": "Consola",
+      "files": "Archivos",
+      "mods": "Mods",
+      "backups": "Copias",
+      "settings": "Ajustes"
+    },
+    "create": {
+      "title": "Nuevo Servidor",
+      "step1": "Nombre y Edición",
+      "step2": "Versión y Software",
+      "step3": "Región y Recursos",
+      "namePlaceholder": "Mi Servidor Épico",
+      "nameLabel": "Nombre del Servidor",
+      "edition": "Edición",
+      "java": "Edición Java",
+      "bedrock": "Edición Bedrock",
+      "version": "Versión de Minecraft",
+      "loader": "Software del Servidor",
+      "region": "Región",
+      "ram": "RAM",
+      "creating": "Creando tu servidor...",
+      "success": "¡Servidor creado!"
+    },
+    "overview": {
+      "address": "Dirección del Servidor",
+      "players": "Jugadores",
+      "uptime": "Tiempo activo",
+      "ram": "Uso de RAM",
+      "cpu": "Uso de CPU",
+      "disk": "Uso de Disco"
+    },
+    "console": {
+      "title": "Consola",
+      "placeholder": "Escribe un comando y presiona Enter...",
+      "connecting": "Conectando a la consola...",
+      "connected": "Consola conectada",
+      "disconnected": "Consola desconectada"
+    },
+    "files": {
+      "title": "Gestor de Archivos",
+      "upload": "Subir",
+      "newFolder": "Nueva Carpeta",
+      "rename": "Renombrar",
+      "download": "Descargar",
+      "selectFile": "Selecciona un archivo para ver o editar",
+      "saving": "Guardando...",
+      "saved": "Guardado",
+      "noFiles": "Sin archivos aún"
+    },
+    "mods": {
+      "title": "Mods y Plugins",
+      "search": "Buscar en Modrinth...",
+      "installed": "Instalados",
+      "browse": "Explorar",
+      "install": "Instalar",
+      "installing": "Instalando...",
+      "uninstall": "Desinstalar",
+      "noMods": "Sin mods instalados",
+      "filterType": "Tipo",
+      "filterLoader": "Cargador",
+      "filterVersion": "Versión MC",
+      "types": {
+        "mod": "Mod",
+        "plugin": "Plugin",
+        "modpack": "Modpack",
+        "datapack": "Datapack"
+      }
+    },
+    "backups": {
+      "title": "Copias de Seguridad",
+      "create": "Crear Copia",
+      "restore": "Restaurar",
+      "restoring": "Restaurando...",
+      "noBackups": "Sin copias de seguridad",
+      "noBackupsDesc": "Crea una copia para proteger tu mundo.",
+      "nameLabel": "Nombre de la Copia",
+      "namePlaceholder": "Antes de la gran actualización",
+      "confirmRestore": "¿Restaurar esta copia?",
+      "confirmRestoreDesc": "Los archivos actuales del servidor serán reemplazados.",
+      "confirmDelete": "¿Eliminar esta copia?",
+      "size": "Tamaño",
+      "created": "Creado"
+    },
+    "settings": {
+      "title": "Ajustes del Servidor",
+      "general": "General",
+      "name": "Nombre del Servidor",
+      "motd": "Mensaje del Día",
+      "maxPlayers": "Jugadores Máximos",
+      "advanced": "Avanzado",
+      "ram": "RAM (MB)",
+      "cpu": "Límite CPU (%)",
+      "javaFlags": "Flags de Java",
+      "saved": "Ajustes guardados"
+    }
+  },
+  "admin": {
+    "title": "Panel de Administración",
+    "overview": "Resumen",
+    "nodes": {
+      "title": "Nodos",
+      "add": "Agregar Nodo",
+      "name": "Nombre del Nodo",
+      "fqdn": "FQDN / Hostname",
+      "ip": "Dirección IP",
+      "region": "Región",
+      "ram": "RAM Total (MB)",
+      "cpu": "CPU Total (%)",
+      "disk": "Disco Total (MB)",
+      "status": "Estado",
+      "servers": "Servidores",
+      "allocations": "Asignaciones"
+    },
+    "regions": {
+      "title": "Regiones",
+      "add": "Agregar Región",
+      "name": "Nombre de la Región",
+      "slug": "Slug",
+      "description": "Descripción",
+      "flag": "Emoji de Bandera"
+    },
+    "allocations": {
+      "title": "Asignaciones",
+      "add": "Agregar Asignación",
+      "ip": "Dirección IP",
+      "port": "Puerto",
+      "node": "Nodo",
+      "server": "Servidor Asignado",
+      "unassigned": "Sin asignar",
+      "assign": "Asignar",
+      "unassign": "Desasignar"
+    },
+    "users": {
+      "title": "Usuarios",
+      "email": "Correo",
+      "role": "Rol",
+      "servers": "Servidores",
+      "joined": "Registrado"
+    },
+    "servers": {
+      "title": "Todos los Servidores",
+      "migrate": "Migrar",
+      "migrateTitle": "Migrar Servidor",
+      "migrateDesc": "Mover este servidor a un nodo diferente.",
+      "targetNode": "Nodo Destino"
+    },
+    "metrics": {
+      "totalServers": "Servidores Totales",
+      "runningServers": "En Ejecución",
+      "totalUsers": "Usuarios",
+      "totalNodes": "Nodos"
+    }
+  },
+  "legal": {
+    "privacy": "Política de Privacidad",
+    "terms": "Términos de Servicio",
+    "aup": "Política de Uso Aceptable",
+    "lastUpdated": "Última Actualización",
+    "contact": "Contáctanos"
+  },
+  "errors": {
+    "serverLimit": "Has alcanzado el límite de servidores",
+    "serverLimitDesc": "El nivel gratuito permite {max} servidor. Actualiza para más.",
+    "ramLimit": "La RAM excede el límite de tu plan ({max} MB)",
+    "diskLimit": "El disco excede el límite de tu plan ({max} MB)",
+    "notFound": "No encontrado",
+    "unauthorized": "No autorizado",
+    "forbidden": "Prohibido",
+    "serverError": "Error del servidor"
+  },
+  "footer": {
+    "company": "Enzonic LLC",
+    "rights": "Todos los derechos reservados.",
+    "privacy": "Política de Privacidad",
+    "terms": "Términos de Servicio",
+    "aup": "Uso Aceptable",
+    "contact": "Contacto"
+  }
+}
