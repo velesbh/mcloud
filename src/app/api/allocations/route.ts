@@ -10,9 +10,11 @@ export async function GET() {
   if (!(await isAdmin())) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const supabase = createAdminSupabaseClient();
+  // Two FK paths exist between allocations↔servers (allocations.server_id and servers.allocation_id).
+  // Use the FK column name as the disambiguation hint instead of the constraint name.
   const { data, error } = await supabase
     .from("allocations")
-    .select("*, nodes!allocations_node_id_fkey(name), servers!allocations_server_id_fkey(name)")
+    .select("id, node_id, ip, local_ip, port, server_id, assigned_at, created_at, nodes!node_id(name), servers!server_id(name)")
     .order("created_at", { ascending: false });
 
   if (error) {
