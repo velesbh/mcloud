@@ -1,45 +1,48 @@
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { randomUUID } from "node:crypto";
 
+const FILE_OP_REPLY_EVENTS = [
+  "list-result", "read-result", "write-result", "mkdir-result", "delete-result",
+  "rename-result", "import-result", "url-import-result", "export-result",
+  "zip-result", "unzip-result",
+];
+const WORLD_OP_REPLY_EVENTS = [
+  "list-result", "set-active-result", "delete-result", "rename-result",
+  "import-result", "export-result",
+];
+
 /**
- * Send a file-op request to the daemon for `nodeId` and wait for the
- * matching `opId` reply on `fileops:{serverId}` channel.
- *
- * Returns the result payload on success, or `{ error }` on timeout / failure.
+ * Generic dispatch: sends a `{event}` payload on `node:{nodeId}` and waits
+ * for a matching opId reply on `{replyPrefix}:{serverId}`.
  */
-export async function dispatchFileOp(
+async function dispatch(
   nodeId: string,
   serverId: string,
-  op: string,
+  event: string,
+  replyPrefix: string,
+  replyEvents: string[],
   args: Record<string, unknown>,
-  timeoutMs = 30_000
+  timeoutMs: number
 ): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; error: string }> {
   const opId = randomUUID();
   const admin = createAdminSupabaseClient();
-
-  // Subscribe to the reply channel first
-  const replyChannel = admin.channel(`fileops:${serverId}`, {
+  const replyChannel = admin.channel(`${replyPrefix}:${serverId}`, {
     config: { broadcast: { self: false, ack: false } },
   });
 
   const resultPromise = new Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; error: string }>(
     (resolve) => {
-      const matchers = ["list-result", "read-result", "write-result", "mkdir-result", "delete-result", "rename-result", "import-result", "url-import-result", "export-result", "zip-result", "unzip-result", "error"];
-      for (const event of matchers) {
-        replyChannel.on("broadcast", { event }, (msg) => {
+      for (const ev of [...replyEvents, "error"]) {
+        replyChannel.on("broadcast", { event: ev }, (msg) => {
           const p = msg.payload as { opId?: string; error?: string };
           if (p?.opId !== opId) return;
-          if (event === "error") {
-            resolve({ ok: false, error: p.error ?? "unknown" });
-          } else {
-            resolve({ ok: true, data: p as Record<string, unknown> });
-          }
+          if (ev === "error") resolve({ ok: false, error: p.error ?? "unknown" });
+          else resolve({ ok: true, data: p as Record<string, unknown> });
         });
       }
     }
   );
 
-  // Open subscription then send the request
   await new Promise<void>((resolve) => {
     replyChannel.subscribe(async (status) => {
       if (status === "SUBSCRIBED") {
@@ -49,8 +52,8 @@ export async function dispatchFileOp(
             if (s === "SUBSCRIBED") {
               await cmdChannel.send({
                 type: "broadcast",
-                event: "file-op",
-                payload: { op, opId, serverId, ...args },
+                event,
+                payload: { op: args.op, opId, serverId, ...args },
               });
               cmdResolve();
             }
@@ -63,7 +66,6 @@ export async function dispatchFileOp(
     });
   });
 
-  // Wait for the daemon's reply (or timeout)
   const timeoutPromise = new Promise<{ ok: false; error: string }>((resolve) =>
     setTimeout(() => resolve({ ok: false, error: "timeout — is the daemon running?" }), timeoutMs)
   );
@@ -71,4 +73,18 @@ export async function dispatchFileOp(
   const result = await Promise.race([resultPromise, timeoutPromise]);
   void admin.removeChannel(replyChannel);
   return result;
+}
+
+export function dispatchFileOp(
+  nodeId: string, serverId: string, op: string,
+  args: Record<string, unknown>, timeoutMs = 30_000
+) {
+  return dispatch(nodeId, serverId, "file-op", "fileops", FILE_OP_REPLY_EVENTS, { op, ...args }, timeoutMs);
+}
+
+export function dispatchWorldOp(
+  nodeId: string, serverId: string, op: string,
+  args: Record<string, unknown>, timeoutMs = 60_000
+) {
+  return dispatch(nodeId, serverId, "world-op", "world", WORLD_OP_REPLY_EVENTS, { op, ...args }, timeoutMs);
 }

@@ -13,6 +13,7 @@ import { subscribeFileManager } from "./file-manager.js";
 import { startHibernationCron } from "./hibernation.js";
 import { startMetricsBroadcaster } from "./metrics-broadcaster.js";
 import { handleFileOp } from "./file-ops.js";
+import { handleWorldOp } from "./world-manager.js";
 
 /**
  * Upsert this node into the DB on startup so it auto-registers.
@@ -152,6 +153,14 @@ function subscribeCommands() {
     if (!p?.op || !p.opId || !p.serverId) return;
     log.info("file-op", { op: p.op, serverId: p.serverId, opId: p.opId });
     await handleFileOp(p as Parameters<typeof handleFileOp>[0]);
+  });
+
+  // World operations: list/set-active/delete/rename/import-url/export
+  channel.on("broadcast", { event: "world-op" }, async (msg) => {
+    const p = msg.payload as { op?: string; opId?: string; serverId?: string } & Record<string, unknown>;
+    if (!p?.op || !p.opId || !p.serverId) return;
+    log.info("world-op", { op: p.op, serverId: p.serverId, opId: p.opId });
+    await handleWorldOp(p as Parameters<typeof handleWorldOp>[0]);
   });
 
   void channel.subscribe((status) => {

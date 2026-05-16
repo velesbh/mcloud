@@ -1,192 +1,254 @@
 "use client";
-import { use } from "react";
+import { use, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { motion } from "motion/react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Card } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { Save, AlertTriangle, Info, Trash2 } from "lucide-react";
+import { PixelPanel, PixelButton } from "@/components/pixel/PixelPanel";
 import { LoadingSpinner } from "@/components/shared/MinecraftLoader";
-import { PageLoader } from "@/components/shared/LoadingScreen";
-import { updateServerSchema, type UpdateServerInput } from "@/lib/validations/server";
-import { FREE_TIER } from "@/lib/constants";
-import { toast } from "sonner";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { MC_JAVA_VERSIONS, JAVA_LOADERS } from "@/lib/constants";
 import { useLocale } from "next-intl";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
-export default function SettingsPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+function requiredJava(gameVersion: string): "8" | "17" | "21" {
+  const [maj, min] = gameVersion.split(".").map(Number);
+  if (maj > 1 || (maj === 1 && min >= 21)) return "21";
+  if (maj === 1 && min >= 17) return "17";
+  return "8";
+}
+
+export default function SettingsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const locale = useLocale();
-  const router = useRouter();
   const qc = useQueryClient();
-  const [deleteOpen, setDeleteOpen] = useState(false);
+  const router = useRouter();
+  const locale = useLocale();
   const [saving, setSaving] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [form, setForm] = useState({
+    name: "", motd: "", max_players: 20,
+    game_version: "1.21.4", loader: "paper" as string,
+  });
 
   const { data: server, isLoading } = useQuery({
     queryKey: ["server", id],
     queryFn: () => fetch(`/api/servers/${id}`).then((r) => r.json()),
   });
 
-  const form = useForm<UpdateServerInput>({
-    resolver: zodResolver(updateServerSchema),
-    values: server
-      ? {
-          name: server.name,
-          motd: server.motd ?? "",
-          max_players: server.max_players,
-          ram_mb: server.ram_mb,
-          cpu_percent: server.cpu_percent,
-          java_flags: server.java_flags ?? "",
-        }
-      : undefined,
-  });
+  useEffect(() => {
+    if (server) {
+      setForm({
+        name: server.name,
+        motd: server.motd ?? "",
+        max_players: server.max_players ?? 20,
+        game_version: server.game_version,
+        loader: server.loader,
+      });
+    }
+  }, [server]);
 
-  if (isLoading || !server) return <PageLoader />;
+  if (isLoading || !server) {
+    return <div className="flex justify-center py-20"><LoadingSpinner size={28} /></div>;
+  }
 
-  async function onSubmit(data: UpdateServerInput) {
+  const changed = server.name !== form.name
+    || (server.motd ?? "") !== form.motd
+    || server.max_players !== form.max_players
+    || server.game_version !== form.game_version
+    || server.loader !== form.loader;
+
+  const versionChanged = server.game_version !== form.game_version;
+  const loaderChanged = server.loader !== form.loader;
+  const newJava = requiredJava(form.game_version);
+  const oldJava = requiredJava(server.game_version);
+  const javaChanged = oldJava !== newJava;
+  const oldVer = parseFloat(server.game_version.split(".").slice(0, 2).join("."));
+  const newVer = parseFloat(form.game_version.split(".").slice(0, 2).join("."));
+  const downgrade = newVer < oldVer;
+
+  async function save() {
     setSaving(true);
     try {
       const res = await fetch(`/api/servers/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify(form),
       });
       if (res.ok) {
+        toast.success("Settings saved — restart the server to apply");
         qc.invalidateQueries({ queryKey: ["server", id] });
-        toast.success("Settings saved");
       } else {
-        toast.error("Failed to save settings");
+        const err = await res.json();
+        toast.error(err.error ?? "Failed to save");
       }
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   }
 
   async function deleteServer() {
-    await fetch(`/api/servers/${id}`, { method: "DELETE" });
-    router.push(`/${locale}`);
-    toast.success("Server deleted");
+    const res = await fetch(`/api/servers/${id}`, { method: "DELETE" });
+    if (res.ok) {
+      toast.success("Server deleted");
+      router.push(`/${locale}/dashboard`);
+    } else {
+      toast.error("Failed to delete");
+    }
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="max-w-2xl space-y-6"
-    >
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <Card className="p-5 space-y-5">
-          <h3 className="font-semibold">General</h3>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Server Name</Label>
-              <Input {...form.register("name")} />
-              {form.formState.errors.name && (
-                <p className="text-xs text-destructive">{form.formState.errors.name.message}</p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label>Max Players</Label>
-              <Input
-                type="number"
-                {...form.register("max_players", { valueAsNumber: true })}
-                min={1}
-                max={1000}
-              />
-            </div>
+    <div className="space-y-4">
+      {/* Basics */}
+      <PixelPanel variant="stone" title="Basics" className="p-4 space-y-3">
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-[10px] font-minecraft uppercase text-muted-foreground">Name</label>
+            <input
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              className="mt-1 w-full px-3 py-2 text-sm bg-background border-2 border-border focus:border-primary outline-none"
+              style={{ borderRadius: 0 }}
+            />
           </div>
-
-          <div className="space-y-2">
-            <Label>Message of the Day (MOTD)</Label>
-            <Input {...form.register("motd")} placeholder="A Minecraft Server" />
+          <div>
+            <label className="text-[10px] font-minecraft uppercase text-muted-foreground">Max Players</label>
+            <input
+              type="number" min={1} max={1000}
+              value={form.max_players}
+              onChange={(e) => setForm({ ...form, max_players: parseInt(e.target.value) || 1 })}
+              className="mt-1 w-full px-3 py-2 text-sm font-mono bg-background border-2 border-border focus:border-primary outline-none"
+              style={{ borderRadius: 0 }}
+            />
           </div>
-        </Card>
+        </div>
+        <div>
+          <label className="text-[10px] font-minecraft uppercase text-muted-foreground">MOTD</label>
+          <input
+            value={form.motd}
+            onChange={(e) => setForm({ ...form, motd: e.target.value })}
+            placeholder="A Minecraft Server"
+            className="mt-1 w-full px-3 py-2 text-sm bg-background border-2 border-border focus:border-primary outline-none"
+            style={{ borderRadius: 0 }}
+          />
+        </div>
+      </PixelPanel>
 
-        <Card className="p-5 space-y-5">
-          <h3 className="font-semibold">Resources</h3>
+      {/* Engine — version + loader */}
+      <PixelPanel variant="stone" title="Engine" className="p-4 space-y-3">
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-[10px] font-minecraft uppercase text-muted-foreground">Game Version</label>
+            <select
+              value={form.game_version}
+              onChange={(e) => setForm({ ...form, game_version: e.target.value })}
+              className="mt-1 w-full px-3 py-2 text-sm font-mono bg-background border-2 border-border focus:border-primary outline-none"
+              style={{ borderRadius: 0 }}
+            >
+              {MC_JAVA_VERSIONS.map((v) => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-minecraft uppercase text-muted-foreground">Loader</label>
+            <select
+              value={form.loader}
+              onChange={(e) => setForm({ ...form, loader: e.target.value })}
+              className="mt-1 w-full px-3 py-2 text-sm bg-background border-2 border-border focus:border-primary outline-none"
+              style={{ borderRadius: 0 }}
+            >
+              {JAVA_LOADERS.map((l) => <option key={l.id} value={l.id}>{l.label} — {l.desc}</option>)}
+            </select>
+          </div>
+        </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label>RAM (MB)</Label>
-              <Input
-                type="number"
-                {...form.register("ram_mb", { valueAsNumber: true })}
-                min={512}
-                max={FREE_TIER.RAM_MB}
-              />
-              <p className="text-xs text-muted-foreground">
-                Max on free tier: {FREE_TIER.RAM_MB}MB
+        <div
+          className="text-xs px-3 py-2 flex items-start gap-2"
+          style={{ background: "rgba(56,189,248,0.08)", border: "2px solid rgba(56,189,248,0.3)" }}
+        >
+          <Info className="w-3.5 h-3.5 text-sky-400 shrink-0 mt-0.5" />
+          <div>
+            <span className="text-sky-400 font-minecraft text-[10px] uppercase">Java Runtime</span>
+            <p className="text-muted-foreground mt-0.5">
+              Java {newJava} required for {form.game_version}.
+              {javaChanged && " The daemon will auto-install on next start."}
+            </p>
+          </div>
+        </div>
+
+        {downgrade && (
+          <div
+            className="text-xs px-3 py-2 flex items-start gap-2"
+            style={{ background: "rgba(217,36,36,0.1)", border: "2px solid rgba(217,36,36,0.3)" }}
+          >
+            <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0 mt-0.5" />
+            <div>
+              <span className="text-destructive font-minecraft text-[10px] uppercase">Version Downgrade</span>
+              <p className="text-muted-foreground mt-0.5">
+                Downgrading from {server.game_version} → {form.game_version} can corrupt existing worlds. <strong>Back up your world first.</strong>
               </p>
             </div>
-            <div className="space-y-2">
-              <Label>CPU Limit (%)</Label>
-              <Input
-                type="number"
-                {...form.register("cpu_percent", { valueAsNumber: true })}
-                min={10}
-                max={FREE_TIER.CPU_PERCENT}
-              />
+          </div>
+        )}
+
+        {loaderChanged && (
+          <div
+            className="text-xs px-3 py-2 flex items-start gap-2"
+            style={{ background: "rgba(232,201,58,0.1)", border: "2px solid rgba(232,201,58,0.3)" }}
+          >
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <span className="text-amber-400 font-minecraft text-[10px] uppercase">Loader Change</span>
+              <p className="text-muted-foreground mt-0.5">
+                Switching {server.loader} → {form.loader} may break existing plugins / mods. The daemon will download the new server jar on next start.
+              </p>
             </div>
           </div>
+        )}
 
-          {server.edition === "java" && (
-            <div className="space-y-2">
-              <Label>Java Flags</Label>
-              <Textarea
-                {...form.register("java_flags")}
-                placeholder="-XX:+UseG1GC -XX:MaxGCPauseMillis=50"
-                className="font-mono text-sm"
-                rows={2}
-              />
-            </div>
-          )}
-        </Card>
+        {versionChanged && !downgrade && (
+          <div
+            className="text-xs px-3 py-2 flex items-start gap-2"
+            style={{ background: "rgba(90,154,46,0.1)", border: "2px solid rgba(90,154,46,0.3)" }}
+          >
+            <Info className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+            <p className="text-muted-foreground">
+              Upgrading to {form.game_version}. Worlds will auto-migrate — back up first to be safe.
+            </p>
+          </div>
+        )}
+      </PixelPanel>
 
-        <div className="flex justify-end">
-          <motion.div whileTap={{ scale: 0.96 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
-            <Button type="submit" disabled={saving} className="gap-2">
-              {saving && <LoadingSpinner size={14} />}
-              {saving ? "Saving..." : "Save Changes"}
-            </Button>
-          </motion.div>
+      {/* Save bar */}
+      <div className="flex items-center gap-3">
+        <PixelButton variant="green" size="lg" onClick={save} disabled={!changed || saving}>
+          {saving ? <LoadingSpinner size={12} /> : <Save className="w-3.5 h-3.5" />}
+          {saving ? "Saving..." : "Save Changes"}
+        </PixelButton>
+        {changed && (
+          <span className="text-[10px] text-amber-400 font-minecraft">
+            Restart server to apply
+          </span>
+        )}
+      </div>
+
+      {/* Danger zone */}
+      <PixelPanel variant="dark" className="p-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h3 className="font-minecraft text-[10px] uppercase text-destructive">Danger Zone</h3>
+            <p className="text-xs text-muted-foreground mt-1">Permanently delete this server and all its data.</p>
+          </div>
+          <PixelButton variant="red" onClick={() => setDeleteOpen(true)}>
+            <Trash2 className="w-3.5 h-3.5" />
+            Delete Server
+          </PixelButton>
         </div>
-      </form>
-
-      <Separator />
-
-      <Card className="p-5 border-destructive/30">
-        <h3 className="font-semibold text-destructive mb-2">Danger Zone</h3>
-        <p className="text-sm text-muted-foreground mb-4">
-          Permanently delete this server and all its data.
-        </p>
-        <Button
-          variant="destructive"
-          onClick={() => setDeleteOpen(true)}
-          className="gap-2"
-        >
-          Delete Server
-        </Button>
-      </Card>
+      </PixelPanel>
 
       <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
-        title="Delete this server?"
-        description="This action cannot be undone. All files, backups, and data will be permanently deleted."
-        confirmLabel="Delete Server"
+        title={`Delete "${server.name}"?`}
+        description="The server folder, world files, mods, and database row will all be permanently removed. This cannot be undone."
+        confirmLabel="Delete Forever"
         onConfirm={deleteServer}
       />
-    </motion.div>
+    </div>
   );
 }
