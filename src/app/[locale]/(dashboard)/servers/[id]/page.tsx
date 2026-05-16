@@ -2,15 +2,30 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { use, useEffect, useState } from "react";
-import { Play, Square, RotateCcw, Copy, Check, Cpu, HardDrive, MemoryStick, Zap } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import {
+  Play, Square, RotateCcw, Copy, Check, Zap, Users, Activity,
+  Wifi, Clock, MapPin,
+} from "lucide-react";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { UsageBar } from "@/components/shared/UsageBar";
 import { LoadingSpinner } from "@/components/shared/MinecraftLoader";
 import { PageLoader } from "@/components/shared/LoadingScreen";
+import { PixelPanel, PixelButton } from "@/components/pixel/PixelPanel";
+import { ServerBlock, HeartIcon, GamepadIcon, CompassIcon } from "@/components/pixel/Block";
 import { useSupabaseClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
+
+interface PingData {
+  online: boolean;
+  address?: string;
+  players_online?: number;
+  players_max?: number;
+  player_list?: { name_clean: string; uuid: string }[];
+  motd?: string;
+  version?: string;
+  latency?: number | null;
+  reason?: string;
+}
 
 export default function ServerOverviewPage({
   params,
@@ -22,7 +37,6 @@ export default function ServerOverviewPage({
   const supabase = useSupabaseClient();
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  // Live values pushed by daemon broadcast
   const [liveStatus, setLiveStatus] = useState<string | null>(null);
   const [liveRamMb, setLiveRamMb] = useState<number | null>(null);
   const [liveCpuPct, setLiveCpuPct] = useState<number | null>(null);
@@ -33,13 +47,19 @@ export default function ServerOverviewPage({
     refetchInterval: 10_000,
   });
 
-  // Subscribe to daemon broadcast events on console:{id} channel
+  // Live ping via mcstatus.io — refreshes every 15s
+  const { data: ping } = useQuery<PingData>({
+    queryKey: ["server-ping", id],
+    queryFn: () => fetch(`/api/servers/${id}/ping`).then((r) => r.json()),
+    refetchInterval: 15_000,
+    enabled: !!server && (liveStatus ?? server?.status) === "running",
+  });
+
   useEffect(() => {
     const ch = supabase
       .channel(`console:${id}`)
       .on("broadcast", { event: "status" }, (msg) => {
         setLiveStatus(msg.payload?.status ?? null);
-        // Also refresh so all queries see the new status
         qc.invalidateQueries({ queryKey: ["server", id] });
       })
       .on("broadcast", { event: "metrics" }, (msg) => {
@@ -50,7 +70,6 @@ export default function ServerOverviewPage({
     return () => { void supabase.removeChannel(ch); };
   }, [id, supabase, qc]);
 
-  // Reset live metrics when server goes offline
   useEffect(() => {
     const status = liveStatus ?? server?.status;
     if (status !== "running") {
@@ -61,21 +80,27 @@ export default function ServerOverviewPage({
 
   if (isLoading || !server) return <PageLoader />;
 
-  // Prefer live broadcast status over polled DB value
   const currentStatus: string = liveStatus ?? server.status;
   const address = server.allocations
     ? `${server.allocations.ip}:${server.allocations.port}`
     : null;
   const isRunning = currentStatus === "running";
   const isTransitioning = ["starting", "stopping", "restarting"].includes(currentStatus);
-
-  // Metrics: real values from daemon if available, zeros when offline
   const ramUsed = isRunning ? (liveRamMb ?? null) : 0;
   const cpuUsed = isRunning ? (liveCpuPct ?? null) : 0;
 
+  // Uptime — derive from last_active_at when running
+  const uptimeText = (() => {
+    if (!isRunning || !server.last_active_at) return null;
+    const ms = Date.now() - new Date(server.last_active_at).getTime();
+    if (ms < 60_000) return `${Math.floor(ms / 1000)}s`;
+    if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m`;
+    if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h ${Math.floor((ms % 3_600_000) / 60_000)}m`;
+    return `${Math.floor(ms / 86_400_000)}d ${Math.floor((ms % 86_400_000) / 3_600_000)}h`;
+  })();
+
   async function runAction(action: "start" | "stop" | "restart" | "kill") {
     setActionLoading(action);
-    // Optimistic local update
     setLiveStatus(
       action === "start" ? "starting" :
       action === "stop" ? "stopping" :
@@ -90,7 +115,7 @@ export default function ServerOverviewPage({
       const data = await res.json();
       if (!res.ok) {
         toast.error(data.message ?? data.error ?? "Action failed");
-        setLiveStatus(null); // revert to DB value
+        setLiveStatus(null);
       } else {
         qc.invalidateQueries({ queryKey: ["server", id] });
       }
@@ -113,174 +138,190 @@ export default function ServerOverviewPage({
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="space-y-6"
+      className="space-y-4"
     >
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">{server.name}</h1>
-          <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
-            <span>{server.edition === "java" ? "☕ Java" : "📱 Bedrock"}</span>
-            <span>·</span>
-            <span>{server.game_version}</span>
-            <span>·</span>
-            <span className="capitalize">{server.loader}</span>
+      {/* Header — pixel block + name + status */}
+      <PixelPanel variant="stone" className="p-4">
+        <div className="flex items-center gap-4 flex-wrap">
+          <ServerBlock size={48} />
+          <div className="flex-1 min-w-0">
+            <h1 className="font-minecraft text-[13px] text-foreground truncate">{server.name}</h1>
+            <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground font-minecraft uppercase tracking-wide">
+              <span>{server.edition === "java" ? "Java" : "Bedrock"}</span>
+              <span>·</span>
+              <span>{server.game_version}</span>
+              <span>·</span>
+              <span>{server.loader}</span>
+            </div>
           </div>
+          <StatusBadge status={currentStatus} />
         </div>
-        <StatusBadge status={currentStatus} />
-      </div>
+      </PixelPanel>
 
-      {/* Actions */}
-      <Card className="p-4">
-        <div className="flex flex-wrap items-center gap-3">
+      {/* Action bar — Minecraft hotbar style */}
+      <PixelPanel variant="dark" className="p-3">
+        <div className="flex flex-wrap items-center gap-2">
           {!isRunning && !isTransitioning && (
-            <motion.div whileTap={{ scale: 0.96 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
-              <Button onClick={() => runAction("start")} disabled={!!actionLoading} className="gap-2">
-                {actionLoading === "start" ? <LoadingSpinner size={14} /> : <Play className="w-4 h-4" />}
-                Start Server
-              </Button>
-            </motion.div>
+            <PixelButton variant="green" size="md" onClick={() => runAction("start")} disabled={!!actionLoading}>
+              {actionLoading === "start" ? <LoadingSpinner size={12} /> : <Play className="w-3 h-3" />}
+              Start
+            </PixelButton>
           )}
           {isRunning && (
             <>
-              <motion.div whileTap={{ scale: 0.96 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
-                <Button variant="outline" onClick={() => runAction("restart")} disabled={!!actionLoading} className="gap-2">
-                  {actionLoading === "restart" ? <LoadingSpinner size={14} /> : <RotateCcw className="w-4 h-4" />}
-                  Restart
-                </Button>
-              </motion.div>
-              <motion.div whileTap={{ scale: 0.96 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
-                <Button variant="outline" onClick={() => runAction("stop")} disabled={!!actionLoading} className="gap-2 text-destructive hover:text-destructive">
-                  {actionLoading === "stop" ? <LoadingSpinner size={14} /> : <Square className="w-4 h-4" />}
-                  Stop
-                </Button>
-              </motion.div>
+              <PixelButton onClick={() => runAction("restart")} disabled={!!actionLoading}>
+                {actionLoading === "restart" ? <LoadingSpinner size={12} /> : <RotateCcw className="w-3 h-3" />}
+                Restart
+              </PixelButton>
+              <PixelButton variant="red" onClick={() => runAction("stop")} disabled={!!actionLoading}>
+                {actionLoading === "stop" ? <LoadingSpinner size={12} /> : <Square className="w-3 h-3" />}
+                Stop
+              </PixelButton>
             </>
           )}
           {isTransitioning && (
-            <div className="flex items-center gap-2">
-              <LoadingSpinner size={16} />
-              <span className="text-sm text-muted-foreground capitalize">{currentStatus}...</span>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => runAction("kill")}
-                disabled={!!actionLoading}
-                className="gap-1.5 text-orange-500 hover:text-orange-400"
-              >
-                <Zap className="w-3.5 h-3.5" />
-                Force Stop
-              </Button>
+            <div className="flex items-center gap-2 px-3 py-1.5">
+              <LoadingSpinner size={14} />
+              <span className="text-[10px] text-muted-foreground capitalize font-minecraft">{currentStatus}...</span>
+              <PixelButton variant="amber" size="sm" onClick={() => runAction("kill")} disabled={!!actionLoading}>
+                <Zap className="w-3 h-3" />
+                Force
+              </PixelButton>
             </div>
           )}
+
+          <div className="flex-1" />
 
           {address ? (
-            <div className="ml-auto flex items-center gap-2 bg-muted/50 rounded-md px-3 py-1.5">
-              <span className="text-sm font-mono text-muted-foreground">{address}</span>
-              <motion.button
-                whileTap={{ scale: 0.9 }}
-                transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                onClick={copyAddress}
-              >
-                {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4 text-muted-foreground" />}
-              </motion.button>
+            <div
+              className="flex items-center gap-2 px-3 py-1.5"
+              style={{ background: "rgba(0,0,0,0.3)", border: "2px solid #3a3a3a" }}
+            >
+              <code className="text-xs font-mono text-foreground">{address}</code>
+              <button onClick={copyAddress} className="text-muted-foreground hover:text-primary transition-colors">
+                {copied ? <Check className="w-3.5 h-3.5 text-primary" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
             </div>
           ) : (
-            <span className="ml-auto text-xs text-muted-foreground">No IP assigned — contact admin</span>
+            <span className="text-[10px] text-muted-foreground font-minecraft">No IP assigned</span>
           )}
         </div>
-      </Card>
+      </PixelPanel>
 
-      {/* Stats — real values from daemon */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card className="p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm font-medium">
-              <MemoryStick className="w-4 h-4 text-primary" />
-              RAM
+      {/* Live status row: players + ping + uptime */}
+      <div className="grid gap-4 md:grid-cols-3">
+        {/* Players */}
+        <PixelPanel variant="ore" title="Players" icon={<Users className="w-3 h-3" />} className="p-4">
+          <div className="flex items-baseline gap-2">
+            <span className="font-minecraft text-2xl text-primary">
+              {ping?.players_online ?? 0}
+            </span>
+            <span className="text-muted-foreground text-sm">/ {ping?.players_max ?? server.max_players}</span>
+          </div>
+          {(ping?.player_list?.length ?? 0) > 0 ? (
+            <div className="mt-2 space-y-1 max-h-20 overflow-y-auto">
+              {ping!.player_list!.slice(0, 8).map((p) => (
+                <div key={p.uuid} className="flex items-center gap-2 text-xs">
+                  <img
+                    src={`https://api.mineatar.io/face/${p.uuid}?scale=16`}
+                    alt=""
+                    width={16}
+                    height={16}
+                    className="pixelated"
+                    style={{ imageRendering: "pixelated" }}
+                  />
+                  <span className="font-mono text-foreground/80">{p.name_clean}</span>
+                </div>
+              ))}
             </div>
-            {isRunning && liveRamMb === null && (
-              <span className="text-[10px] text-muted-foreground animate-pulse">waiting for daemon...</span>
-            )}
-          </div>
-          <UsageBar
-            label=""
-            used={ramUsed ?? 0}
-            total={server.ram_mb}
-          />
-          <p className="text-xs text-muted-foreground">
-            {ramUsed !== null && ramUsed > 0
-              ? `${ramUsed} MB used of ${server.ram_mb} MB`
-              : `${server.ram_mb} MB allocated`}
-          </p>
-        </Card>
+          ) : isRunning ? (
+            <p className="text-[10px] text-muted-foreground mt-2 font-minecraft">
+              {ping?.online ? "Empty server" : "Waiting for ping..."}
+            </p>
+          ) : (
+            <p className="text-[10px] text-muted-foreground mt-2 font-minecraft">Server offline</p>
+          )}
+        </PixelPanel>
 
-        <Card className="p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm font-medium">
-              <Cpu className="w-4 h-4 text-primary" />
-              CPU
-            </div>
-            {isRunning && liveCpuPct === null && (
-              <span className="text-[10px] text-muted-foreground animate-pulse">waiting...</span>
-            )}
+        {/* Latency / ping */}
+        <PixelPanel variant="stone" title="Connection" icon={<Wifi className="w-3 h-3" />} className="p-4">
+          <div className="flex items-baseline gap-2">
+            <span className="font-minecraft text-2xl text-foreground">
+              {ping?.latency != null ? Math.round(ping.latency) : "—"}
+            </span>
+            <span className="text-muted-foreground text-sm">ms</span>
           </div>
-          <UsageBar
-            label=""
-            used={cpuUsed ?? 0}
-            total={100}
-            unit="percent"
-            formatValue={(v) => `${v}%`}
-          />
-          <p className="text-xs text-muted-foreground">
-            {cpuUsed !== null && isRunning
-              ? `${cpuUsed}% usage`
-              : `${server.cpu_percent}% limit`}
-          </p>
-        </Card>
+          {ping?.motd && (
+            <p className="text-[10px] text-muted-foreground mt-2 truncate" title={ping.motd}>
+              <span className="text-foreground/60">MOTD:</span> {ping.motd}
+            </p>
+          )}
+          {ping?.version && (
+            <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{ping.version}</p>
+          )}
+        </PixelPanel>
 
-        <Card className="p-4 space-y-3">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <HardDrive className="w-4 h-4 text-primary" />
-            Disk
+        {/* Uptime */}
+        <PixelPanel variant="stone" title="Uptime" icon={<Clock className="w-3 h-3" />} className="p-4">
+          <div className="font-minecraft text-2xl text-foreground">
+            {uptimeText ?? "—"}
           </div>
-          <UsageBar
-            label=""
-            used={Math.floor(server.disk_mb * 0.1)}
-            total={server.disk_mb}
-          />
-          <p className="text-xs text-muted-foreground">
-            {server.disk_mb >= 1024
-              ? `${(server.disk_mb / 1024).toFixed(1)} GB allocated`
-              : `${server.disk_mb} MB allocated`}
+          <p className="text-[10px] text-muted-foreground mt-2 font-minecraft">
+            {isRunning ? "Currently online" : "Server offline"}
           </p>
-        </Card>
+        </PixelPanel>
       </div>
 
-      {/* Server info */}
-      <Card className="p-4">
-        <h3 className="text-sm font-semibold mb-3">Server Info</h3>
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+      {/* Resource bars */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <PixelPanel variant="stone" title="RAM" icon={<HeartIcon size={12} />} className="p-4 space-y-2">
+          <UsageBar label="" used={ramUsed ?? 0} total={server.ram_mb} />
+          <p className="text-[10px] text-muted-foreground font-minecraft">
+            {ramUsed && ramUsed > 0
+              ? `${ramUsed} / ${server.ram_mb} MB`
+              : `${server.ram_mb} MB allocated`}
+          </p>
+        </PixelPanel>
+
+        <PixelPanel variant="stone" title="CPU" icon={<Activity className="w-3 h-3" />} className="p-4 space-y-2">
+          <UsageBar label="" used={cpuUsed ?? 0} total={100} unit="percent" formatValue={(v) => `${v}%`} />
+          <p className="text-[10px] text-muted-foreground font-minecraft">
+            {cpuUsed != null && isRunning ? `${cpuUsed}% usage` : `${server.cpu_percent}% limit`}
+          </p>
+        </PixelPanel>
+
+        <PixelPanel variant="stone" title="Disk" icon={<GamepadIcon size={12} />} className="p-4 space-y-2">
+          <UsageBar label="" used={Math.floor(server.disk_mb * 0.1)} total={server.disk_mb} />
+          <p className="text-[10px] text-muted-foreground font-minecraft">
+            {(server.disk_mb / 1024).toFixed(1)} GB allocated
+          </p>
+        </PixelPanel>
+      </div>
+
+      {/* Server Info — wooden plank style */}
+      <PixelPanel variant="wood" title="Server Details" icon={<MapPin className="w-3 h-3" />} className="p-4">
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
           <div>
-            <dt className="text-muted-foreground">MOTD</dt>
-            <dd className="font-medium">{server.motd}</dd>
+            <dt className="text-[10px] text-muted-foreground font-minecraft uppercase">MOTD</dt>
+            <dd className="font-mono text-xs text-foreground/90 mt-0.5">{server.motd}</dd>
           </div>
           <div>
-            <dt className="text-muted-foreground">Max Players</dt>
-            <dd className="font-medium">{server.max_players}</dd>
+            <dt className="text-[10px] text-muted-foreground font-minecraft uppercase">Max Players</dt>
+            <dd className="font-mono text-xs text-foreground/90 mt-0.5">{server.max_players}</dd>
           </div>
           <div>
-            <dt className="text-muted-foreground">Region</dt>
-            <dd className="font-medium">
-              {server.regions ? `${server.regions.flag_emoji} ${server.regions.name}` : "—"}
+            <dt className="text-[10px] text-muted-foreground font-minecraft uppercase">Region</dt>
+            <dd className="text-xs text-foreground/90 mt-0.5 flex items-center gap-1">
+              <CompassIcon size={12} />
+              {server.regions?.name ?? "—"}
             </dd>
           </div>
           <div>
-            <dt className="text-muted-foreground">Node</dt>
-            <dd className="font-medium">{server.nodes?.name ?? "—"}</dd>
+            <dt className="text-[10px] text-muted-foreground font-minecraft uppercase">Node</dt>
+            <dd className="font-mono text-xs text-foreground/90 mt-0.5">{server.nodes?.name ?? "—"}</dd>
           </div>
         </dl>
-      </Card>
+      </PixelPanel>
     </motion.div>
   );
 }

@@ -12,6 +12,7 @@ import {
 import { subscribeFileManager } from "./file-manager.js";
 import { startHibernationCron } from "./hibernation.js";
 import { startMetricsBroadcaster } from "./metrics-broadcaster.js";
+import { handleFileOp } from "./file-ops.js";
 
 /**
  * Upsert this node into the DB on startup so it auto-registers.
@@ -143,6 +144,14 @@ function subscribeCommands() {
   channel.on("broadcast", { event: "watch" }, (msg) => {
     const id = msg.payload?.serverId;
     if (id) subscribeFileManager(id);
+  });
+
+  // File operations: list/read/write/upload/download/zip/unzip/etc.
+  channel.on("broadcast", { event: "file-op" }, async (msg) => {
+    const p = msg.payload as { op?: string; opId?: string; serverId?: string } & Record<string, unknown>;
+    if (!p?.op || !p.opId || !p.serverId) return;
+    log.info("file-op", { op: p.op, serverId: p.serverId, opId: p.opId });
+    await handleFileOp(p as Parameters<typeof handleFileOp>[0]);
   });
 
   void channel.subscribe((status) => {

@@ -1,6 +1,6 @@
 "use client";
 import { use } from "react";
-import { FileManager } from "@/components/server/FileManager";
+import { FileManagerV2 } from "@/components/server/FileManagerV2";
 
 export default function FilesPage({
   params,
@@ -8,5 +8,5 @@ export default function FilesPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  return <FileManager serverId={id} />;
+  return <FileManagerV2 serverId={id} />;
 }
