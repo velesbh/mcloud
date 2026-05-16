@@ -4,7 +4,7 @@ import path from "node:path";
 import { config } from "./config.js";
 import { log } from "./logger.js";
 import { supabase } from "./supabase.js";
-import { broadcastConsole, persistConsoleLine } from "./console-bridge.js";
+import { broadcastConsole, broadcastServerStatus, persistConsoleLine } from "./console-bridge.js";
 import { ensureJar } from "./jar-manager.js";
 import { installJava, requiredJavaMajor } from "./java-installer.js";
 
@@ -38,6 +38,8 @@ async function setStatus(serverId: string, status: string) {
     .from("servers")
     .update({ status, last_active_at: new Date().toISOString() })
     .eq("id", serverId);
+  // Push status immediately to subscribed clients — no polling delay
+  void broadcastServerStatus(serverId, status);
 }
 
 

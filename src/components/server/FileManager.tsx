@@ -30,25 +30,29 @@ interface FileNode extends ServerFile {
 
 function buildTree(files: ServerFile[]): FileNode[] {
   const map: Record<string, FileNode> = {};
-  const roots: FileNode[] = [];
 
+  // Build node map first
   files.forEach((f) => {
     map[f.path] = { ...f, children: f.is_directory ? [] : undefined };
   });
 
+  // Wire children to parents
   files.forEach((f) => {
+    if (f.path === "/") return; // root itself — skip
     const parts = f.path.split("/").filter(Boolean);
-    if (parts.length <= 1) {
-      if (f.path !== "/") roots.push(map[f.path]);
-    } else {
-      const parentPath = "/" + parts.slice(0, -1).join("/");
-      const parent = map[parentPath] ?? map["/"];
-      if (parent?.children) parent.children.push(map[f.path]);
+    // "/world" → parent "/",  "/plugins/foo.jar" → parent "/plugins"
+    const parentPath = parts.length === 1 ? "/" : "/" + parts.slice(0, -1).join("/");
+    const parent = map[parentPath];
+    if (parent?.children !== undefined) {
+      parent.children.push(map[f.path]);
     }
   });
 
-  const rootDir = map["/"];
-  return rootDir?.children ?? roots;
+  // Return root's children (or top-level items if no root entry)
+  return map["/"]?.children ?? Object.values(map).filter((n) => {
+    const parts = n.path.split("/").filter(Boolean);
+    return parts.length === 1;
+  });
 }
 
 function FileTreeNode({
@@ -150,22 +154,54 @@ export function FileManager({ serverId }: { serverId: string }) {
 
   const tree = buildTree(files);
 
+  const TEXT_EXTS = [".properties", ".txt", ".yml", ".yaml", ".json", ".toml", ".cfg", ".conf", ".log", ".sh", ".xml"];
+  function isTextFile(name: string) {
+    return TEXT_EXTS.some((ext) => name.toLowerCase().endsWith(ext));
+  }
+
   async function handleSelectFile(node: FileNode) {
     setSelectedFile(node);
-    // For text files, load mock content
-    if (!node.is_directory) {
-      setEditContent(
-        `# ${node.name}\n# Edit your file here\n# Changes are saved automatically`
-      );
+    if (node.is_directory) return;
+    if (!isTextFile(node.name)) {
+      setEditContent("# Binary file — cannot display");
+      return;
+    }
+    setEditContent("# Loading...");
+    try {
+      const res = await fetch(`/api/servers/${serverId}/files/content?path=${encodeURIComponent(node.path)}`);
+      if (res.ok) {
+        const text = await res.text();
+        setEditContent(text);
+      } else {
+        setEditContent("# Could not load file content");
+      }
+    } catch {
+      setEditContent("# Failed to load file");
     }
   }
 
   async function saveFile() {
     if (!selectedFile) return;
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 500));
-    toast.success("File saved");
-    setSaving(false);
+    try {
+      const res = await fetch(
+        `/api/servers/${serverId}/files/content?path=${encodeURIComponent(selectedFile.path)}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "text/plain" },
+          body: editContent,
+        }
+      );
+      if (res.ok) {
+        toast.success("File saved");
+      } else {
+        toast.error("Failed to save file");
+      }
+    } catch {
+      toast.error("Failed to save file");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function createFolder() {

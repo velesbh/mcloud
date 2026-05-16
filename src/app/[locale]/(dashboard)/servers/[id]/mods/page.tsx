@@ -1,5 +1,5 @@
 "use client";
-import { use, useState } from "react";
+import { use, useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Search, Package } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -37,9 +37,8 @@ export default function ModsPage({ params }: { params: Promise<{ id: string }> }
   const qc = useQueryClient();
   const [query, setQuery] = useState("");
   const [type, setType] = useState<string>("mod");
-  const [version, setVersion] = useState<string>("1.21.4");
+  const [version, setVersion] = useState<string>("");
   const [installing, setInstalling] = useState<string | null>(null);
-  const [serverInitialized, setServerInitialized] = useState(false);
   const debouncedQuery = useDebounce(query, 400);
 
   // Fetch server info to seed version + loader
@@ -47,17 +46,19 @@ export default function ModsPage({ params }: { params: Promise<{ id: string }> }
     queryKey: ["server", id],
     queryFn: () => fetch(`/api/servers/${id}`).then((r) => r.json()),
     staleTime: 60_000,
-    select: (s) => {
-      if (!serverInitialized && s?.game_version) {
-        setVersion(s.game_version);
-        setServerInitialized(true);
-      }
-      return s;
-    },
   });
+
+  // Seed version from server once loaded
+  useEffect(() => {
+    if (server?.game_version && !version) {
+      setVersion(server.game_version);
+    }
+  }, [server?.game_version, version]);
 
   const serverLoader = server?.loader ?? "paper";
   const modrinthLoader = toModrinthLoader(serverLoader);
+  // Use server version as default if not yet set
+  const effectiveVersion = version || server?.game_version || "1.21.4";
 
   const { data: installed = [], isLoading: loadingInstalled } = useQuery<ModInstallation[]>({
     queryKey: ["mods", id],
@@ -65,12 +66,13 @@ export default function ModsPage({ params }: { params: Promise<{ id: string }> }
   });
 
   const { data: searchResult, isLoading: loadingSearch } = useQuery<ModrinthSearchResult>({
-    queryKey: ["modrinth-search", debouncedQuery, type, version, modrinthLoader],
+    queryKey: ["modrinth-search", debouncedQuery, type, effectiveVersion, modrinthLoader],
     queryFn: () => {
-      const p = new URLSearchParams({ query: debouncedQuery, type, version, limit: "20" });
+      const p = new URLSearchParams({ query: debouncedQuery, type, version: effectiveVersion, limit: "20" });
       if (modrinthLoader) p.set("loader", modrinthLoader);
       return fetch(`/api/modrinth/search?${p}`).then((r) => r.json());
     },
+    enabled: !!effectiveVersion,
     staleTime: 60_000,
   });
 
@@ -148,8 +150,8 @@ export default function ModsPage({ params }: { params: Promise<{ id: string }> }
               </SelectContent>
             </Select>
 
-            {/* MC version — editable so user can install older versions */}
-            <Select value={version} onValueChange={setVersion}>
+            {/* MC version — seeded from server, user can override for compat */}
+            <Select value={effectiveVersion} onValueChange={setVersion}>
               <SelectTrigger className="w-32 h-9">
                 <SelectValue />
               </SelectTrigger>

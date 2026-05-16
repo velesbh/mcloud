@@ -36,6 +36,44 @@ export async function broadcastConsole(
   }
 }
 
+/**
+ * Broadcast a status change on the console channel so clients can react
+ * immediately without waiting for a DB poll.
+ */
+export async function broadcastServerStatus(serverId: string, status: string) {
+  try {
+    const ch = getChannel(serverId);
+    await ch.send({
+      type: "broadcast",
+      event: "status",
+      payload: { status, ts: Date.now() },
+    });
+  } catch (e) {
+    log.warn("broadcastServerStatus failed", { serverId, err: String(e) });
+  }
+}
+
+/**
+ * Broadcast real-time resource metrics so the overview page can show
+ * actual RAM/CPU usage without polling the DB.
+ */
+export async function broadcastMetrics(
+  serverId: string,
+  ramMb: number,
+  cpuPercent: number
+) {
+  try {
+    const ch = getChannel(serverId);
+    await ch.send({
+      type: "broadcast",
+      event: "metrics",
+      payload: { ramMb, cpuPercent, ts: Date.now() },
+    });
+  } catch (e) {
+    log.warn("broadcastMetrics failed", { serverId, err: String(e) });
+  }
+}
+
 /** Persist a single console line for replay (last 100 displayed on mount). */
 export async function persistConsoleLine(
   serverId: string,

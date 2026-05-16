@@ -11,6 +11,7 @@ import {
 } from "./server-manager.js";
 import { subscribeFileManager } from "./file-manager.js";
 import { startHibernationCron } from "./hibernation.js";
+import { startMetricsBroadcaster } from "./metrics-broadcaster.js";
 
 /**
  * Upsert this node into the DB on startup so it auto-registers.
@@ -175,6 +176,7 @@ async function main() {
   subscribeCommands();
   await subscribeKnownServers();
   startHibernationCron();
+  startMetricsBroadcaster();
   log.info("daemon ready");
 }
 
