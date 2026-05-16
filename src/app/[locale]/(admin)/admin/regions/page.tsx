@@ -36,8 +36,21 @@ export default function RegionsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      console.log("Response status:", res.status, "ok:", res.ok);
-      const data = await res.json();
+      console.log("Response status:", res.status, "ok:", res.ok, "content-type:", res.headers.get("content-type"));
+
+      const text = await res.text();
+      console.log("Response text (first 500 chars):", text.substring(0, 500));
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        console.error("Failed to parse JSON response:", e);
+        toast.error(`Server error (${res.status}): ${text.substring(0, 200)}`);
+        setSaving(false);
+        return;
+      }
+
       console.log("Response data:", data);
       if (res.ok) {
         console.log("Region created, invalidating queries");
