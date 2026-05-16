@@ -36,9 +36,9 @@ export default function AllocationsPage() {
     queryFn: async () => {
       const res = await fetch("/api/allocations");
       const data = await res.json();
-      if (!Array.isArray(data)) return [];
-      return data;
+      return Array.isArray(data) ? data : [];
     },
+    initialData: [],
   });
 
   const { data: nodes = [] } = useQuery<Node[]>({
@@ -46,9 +46,9 @@ export default function AllocationsPage() {
     queryFn: async () => {
       const res = await fetch("/api/nodes");
       const data = await res.json();
-      if (!Array.isArray(data)) return [];
-      return data;
+      return Array.isArray(data) ? data : [];
     },
+    initialData: [],
   });
 
   // Group allocations by node_id

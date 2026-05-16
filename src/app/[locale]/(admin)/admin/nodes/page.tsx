@@ -165,14 +165,17 @@ export default function NodesPage() {
                   </p>
                 )}
 
-                <UsageBar label="RAM" used={node.running_count * 512} total={node.total_ram_mb} />
+                <UsageBar label="RAM" used={(node as any).allocated_ram_mb ?? 0} total={node.total_ram_mb} />
                 <UsageBar
                   label="CPU"
-                  used={0}
+                  used={(node as any).allocated_cpu ?? 0}
                   total={node.total_cpu}
                   unit="percent"
                   formatValue={(v) => `${v}%`}
                 />
+                <p className="text-xs text-muted-foreground">
+                  {(node as any).used_allocations ?? 0} / {(node as any).total_allocations ?? 0} ports assigned
+                </p>
               </Card>
             </motion.div>
           ))}
