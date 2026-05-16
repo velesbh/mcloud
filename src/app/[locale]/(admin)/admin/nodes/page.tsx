@@ -49,28 +49,59 @@ export default function NodesPage() {
   async function createNode() {
     setSaving(true);
     try {
+      console.log("Creating node with form:", form);
       const res = await fetch("/api/nodes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
+      console.log("Response status:", res.status, "ok:", res.ok);
+      const text = await res.text();
+      console.log("Response text (first 500 chars):", text.substring(0, 500));
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        console.error("Failed to parse JSON response:", e);
+        toast.error(`Server error (${res.status}): ${text.substring(0, 200)}`);
+        setSaving(false);
+        return;
+      }
+
+      console.log("Response data:", data);
       if (res.ok) {
-        qc.invalidateQueries({ queryKey: ["nodes"] });
+        console.log("Node created, invalidating queries");
+        await qc.invalidateQueries({ queryKey: ["nodes"] });
         toast.success("Node created");
         setOpen(false);
         setForm({ name: "", region_id: "", fqdn: "", ip: "", total_ram_mb: 8192, total_cpu: 400, total_disk_mb: 102400, overallocation_percent: 100 });
       } else {
-        toast.error("Failed to create node");
+        console.error("Node creation failed:", data);
+        toast.error(data.error || "Failed to create node");
       }
+    } catch (err) {
+      console.error("Node creation error:", err);
+      toast.error(err instanceof Error ? err.message : "Network error");
     } finally {
       setSaving(false);
     }
   }
 
   async function deleteNode(id: string) {
-    await fetch(`/api/nodes/${id}`, { method: "DELETE" });
-    qc.invalidateQueries({ queryKey: ["nodes"] });
-    toast.success("Node deleted");
+    try {
+      const res = await fetch(`/api/nodes/${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (res.ok) {
+        qc.invalidateQueries({ queryKey: ["nodes"] });
+        toast.success("Node deleted");
+        setDeleteTarget(null);
+      } else {
+        toast.error(data.error || "Failed to delete node");
+      }
+    } catch (err) {
+      toast.error("Network error");
+    }
   }
 
   if (isLoading) return <PageLoader />;
