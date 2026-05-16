@@ -22,6 +22,10 @@ export default clerkMiddleware(async (auth, req) => {
   if (!isPublicRoute(req)) {
     await auth.protect();
   }
+  // Don't apply intl middleware to API routes or other non-page routes
+  if (req.nextUrl.pathname.startsWith("/api")) {
+    return;
+  }
   return intlMiddleware(req);
 });
 
