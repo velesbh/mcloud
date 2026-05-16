@@ -2,91 +2,25 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
-import { Plus, Network, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Network, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
-import { LoadingSpinner } from "@/components/shared/MinecraftLoader";
 import { PageLoader } from "@/components/shared/LoadingScreen";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { EmptyState } from "@/components/shared/EmptyState";
-import { StatusBadge } from "@/components/shared/StatusBadge";
 import { UsageBar } from "@/components/shared/UsageBar";
 import { toast } from "sonner";
-import type { Node, Region } from "@/lib/supabase/types";
+import type { Node } from "@/lib/supabase/types";
 
 export default function NodesPage() {
   const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({
-    name: "",
-    region_id: "",
-    fqdn: "",
-    ip: "",
-    total_ram_mb: 8192,
-    total_cpu: 400,
-    total_disk_mb: 102400,
-    overallocation_percent: 100,
-  });
 
   const { data: nodes = [], isLoading } = useQuery<(Node & { regions: any })[]>({
     queryKey: ["nodes"],
     queryFn: () => fetch("/api/nodes").then((r) => r.json()),
   });
-
-  const { data: regions = [] } = useQuery<Region[]>({
-    queryKey: ["regions"],
-    queryFn: () => fetch("/api/regions").then((r) => r.json()),
-  });
-
-  async function createNode() {
-    setSaving(true);
-    try {
-      console.log("Creating node with form:", form);
-      const res = await fetch("/api/nodes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-      console.log("Response status:", res.status, "ok:", res.ok);
-      const text = await res.text();
-      console.log("Response text (first 500 chars):", text.substring(0, 500));
-
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (e) {
-        console.error("Failed to parse JSON response:", e);
-        toast.error(`Server error (${res.status}): ${text.substring(0, 200)}`);
-        setSaving(false);
-        return;
-      }
-
-      console.log("Response data:", data);
-      if (res.ok) {
-        console.log("Node created, invalidating queries");
-        await qc.invalidateQueries({ queryKey: ["nodes"] });
-        toast.success("Node created");
-        setOpen(false);
-        setForm({ name: "", region_id: "", fqdn: "", ip: "", total_ram_mb: 8192, total_cpu: 400, total_disk_mb: 102400, overallocation_percent: 100 });
-      } else {
-        console.error("Node creation failed:", data);
-        toast.error(data.error || "Failed to create node");
-      }
-    } catch (err) {
-      console.error("Node creation error:", err);
-      toast.error(err instanceof Error ? err.message : "Network error");
-    } finally {
-      setSaving(false);
-    }
-  }
 
   async function deleteNode(id: string) {
     try {
@@ -110,19 +44,13 @@ export default function NodesPage() {
     <div className="space-y-4">
       <PageHeader
         title="Nodes"
-        description="Physical and virtual servers hosting Minecraft instances."
-        action={
-          <Button onClick={() => setOpen(true)} className="gap-2">
-            <Plus className="w-4 h-4" />
-            Add Node
-          </Button>
-        }
+        description="Physical and virtual servers hosting Minecraft instances. Auto-registered by daemon."
       />
 
       {nodes.length === 0 ? (
         <EmptyState
-          title="No nodes configured"
-          description="Add your first node to start hosting servers."
+          title="No nodes online"
+          description="Waiting for daemon to register nodes..."
           icon={<Network className="w-12 h-12 text-muted-foreground" />}
         />
       ) : (
@@ -176,80 +104,6 @@ export default function NodesPage() {
           ))}
         </div>
       )}
-
-      {/* Add node dialog */}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add Node</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-3 py-2">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label>Name</Label>
-                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-              </div>
-              <div className="space-y-1">
-                <Label>Region</Label>
-                <Select onValueChange={(v) => setForm({ ...form, region_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Select region" /></SelectTrigger>
-                  <SelectContent>
-                    {regions.map((r) => (
-                      <SelectItem key={r.id} value={r.id}>{r.flag_emoji} {r.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label>FQDN / Hostname</Label>
-                <Input value={form.fqdn} onChange={(e) => setForm({ ...form, fqdn: e.target.value })} placeholder="node1.enzonic.com" />
-              </div>
-              <div className="space-y-1">
-                <Label>IP Address</Label>
-                <Input value={form.ip} onChange={(e) => setForm({ ...form, ip: e.target.value })} placeholder="192.168.1.1" />
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-1">
-                <Label>RAM (MB)</Label>
-                <Input type="number" value={form.total_ram_mb} onChange={(e) => setForm({ ...form, total_ram_mb: parseInt(e.target.value) })} />
-              </div>
-              <div className="space-y-1">
-                <Label>CPU (%)</Label>
-                <Input type="number" value={form.total_cpu} onChange={(e) => setForm({ ...form, total_cpu: parseInt(e.target.value) })} />
-              </div>
-              <div className="space-y-1">
-                <Label>Disk (MB)</Label>
-                <Input type="number" value={form.total_disk_mb} onChange={(e) => setForm({ ...form, total_disk_mb: parseInt(e.target.value) })} />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label>Overallocation %</Label>
-              <Input
-                type="number"
-                min={50}
-                max={400}
-                value={form.overallocation_percent}
-                onChange={(e) =>
-                  setForm({ ...form, overallocation_percent: parseInt(e.target.value) })
-                }
-              />
-              <p className="text-[10px] text-muted-foreground">
-                100 = no overallocation. 150 = sell up to 1.5× physical. Higher = more risk if everyone runs at peak.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={createNode} disabled={saving || !form.name || !form.region_id || !form.ip} className="gap-2">
-              {saving && <LoadingSpinner size={12} />}
-              Add Node
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <ConfirmDialog
         open={!!deleteTarget}
