@@ -1,5 +1,5 @@
 -- Create all tables in public schema (mirroring mcloud structure)
--- Then copy data from mcloud
+-- Then copy data from mcloud using SELECT * to avoid column mismatches
 
 CREATE TABLE IF NOT EXISTS public.profiles (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -67,7 +67,6 @@ CREATE TABLE IF NOT EXISTS public.allocations (
 CREATE TABLE IF NOT EXISTS public.servers (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id         UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  clerk_user_id   TEXT NOT NULL,
   name            TEXT NOT NULL,
   edition         TEXT NOT NULL DEFAULT 'java',
   game_version    TEXT NOT NULL DEFAULT '1.21.4',
@@ -164,47 +163,20 @@ CREATE TABLE IF NOT EXISTS public.billing_plans (
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Now copy data from mcloud to public
-INSERT INTO public.profiles (id, clerk_user_id, email, display_name, avatar_url, role, plan_tier, max_servers, max_ram_mb, max_disk_mb, created_at, updated_at)
-SELECT id, clerk_user_id, email, display_name, avatar_url, role, plan_tier, max_servers, max_ram_mb, max_disk_mb, created_at, updated_at FROM mcloud.profiles
+-- Copy data using SELECT * to match whatever structure actually exists
+INSERT INTO public.profiles SELECT * FROM mcloud.profiles ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.regions SELECT * FROM mcloud.regions ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.nodes SELECT * FROM mcloud.nodes ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.public_ips SELECT * FROM mcloud.public_ips ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.allocations SELECT * FROM mcloud.allocations ON CONFLICT (id) DO NOTHING;
+
+-- Servers needs special handling - only copy columns that exist
+INSERT INTO public.servers (id, user_id, name, edition, game_version, loader, loader_version, ram_mb, cpu_percent, disk_mb, status, node_id, allocation_id, region_id, motd, max_players, java_flags, env_vars, installed_at, last_started_at, last_active_at, hibernated_at, created_at, updated_at)
+SELECT id, user_id, name, edition, game_version, loader, loader_version, ram_mb, cpu_percent, disk_mb, status, node_id, allocation_id, region_id, motd, max_players, java_flags, env_vars, installed_at, last_started_at, last_active_at, hibernated_at, created_at, updated_at FROM mcloud.servers
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO public.regions (id, name, slug, description, flag_emoji, created_at, updated_at)
-SELECT id, name, slug, description, flag_emoji, created_at, updated_at FROM mcloud.regions
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO public.nodes (id, region_id, name, fqdn, ip, total_ram_mb, total_cpu, total_disk_mb, status, is_public, memory_overcommit_percent, overallocation_percent, last_seen_at, running_count, created_at, updated_at)
-SELECT id, region_id, name, fqdn, ip, total_ram_mb, total_cpu, total_disk_mb, status, is_public, memory_overcommit_percent, overallocation_percent, last_seen_at, running_count, created_at, updated_at FROM mcloud.nodes
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO public.public_ips (id, node_id, ip, is_active, created_at)
-SELECT id, node_id, ip, is_active, created_at FROM mcloud.public_ips
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO public.allocations (id, node_id, ip, port, server_id, assigned_at, created_at)
-SELECT id, node_id, ip, port, server_id, assigned_at, created_at FROM mcloud.allocations
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO public.servers (id, user_id, clerk_user_id, name, edition, game_version, loader, loader_version, ram_mb, cpu_percent, disk_mb, status, node_id, allocation_id, region_id, motd, max_players, java_flags, env_vars, installed_at, last_started_at, last_active_at, hibernated_at, created_at, updated_at)
-SELECT id, user_id, clerk_user_id, name, edition, game_version, loader, loader_version, ram_mb, cpu_percent, disk_mb, status, node_id, allocation_id, region_id, motd, max_players, java_flags, env_vars, installed_at, last_started_at, last_active_at, hibernated_at, created_at, updated_at FROM mcloud.servers
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO public.server_backups (id, server_id, name, size_bytes, status, storage_path, created_at, completed_at)
-SELECT id, server_id, name, size_bytes, status, storage_path, created_at, completed_at FROM mcloud.server_backups
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO public.mod_installations (id, server_id, modrinth_project_id, version_id, name, icon_url, type, loader, game_version, installed_at)
-SELECT id, server_id, modrinth_project_id, version_id, name, icon_url, type, loader, game_version, installed_at FROM mcloud.mod_installations
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO public.console_events (id, server_id, line, source, created_at)
-SELECT id, server_id, line, source, created_at FROM mcloud.console_events
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO public.server_files (id, server_id, path, name, is_directory, size_bytes, mime_type, storage_path, created_at, updated_at)
-SELECT id, server_id, path, name, is_directory, size_bytes, mime_type, storage_path, created_at, updated_at FROM mcloud.server_files
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO public.billing_plans (id, plan_key, name, description, monthly_price_usd, max_servers, max_ram_mb, max_disk_mb, max_cpu_percent, features, sort_order, is_visible, is_highlighted, created_at, updated_at)
-SELECT id, plan_key, name, description, monthly_price_usd, max_servers, max_ram_mb, max_disk_mb, max_cpu_percent, features, sort_order, is_visible, is_highlighted, created_at, updated_at FROM mcloud.billing_plans
-ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.server_backups SELECT * FROM mcloud.server_backups ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.mod_installations SELECT * FROM mcloud.mod_installations ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.console_events SELECT * FROM mcloud.console_events ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.server_files SELECT * FROM mcloud.server_files ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.billing_plans SELECT * FROM mcloud.billing_plans ON CONFLICT (id) DO NOTHING;
