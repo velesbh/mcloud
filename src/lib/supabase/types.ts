@@ -17,7 +17,8 @@ export type ServerStatus =
   | "stopping"
   | "restarting"
   | "error"
-  | "suspended";
+  | "suspended"
+  | "hibernated";
 
 export type NodeStatus = "online" | "offline" | "maintenance" | "unknown";
 export type ServerLoader =
@@ -44,6 +45,7 @@ export interface Database {
           display_name: string | null;
           avatar_url: string | null;
           role: UserRole;
+          plan_tier: string;
           max_servers: number;
           max_ram_mb: number;
           max_disk_mb: number;
@@ -57,6 +59,7 @@ export interface Database {
           display_name?: string | null;
           avatar_url?: string | null;
           role?: UserRole;
+          plan_tier?: string;
           max_servers?: number;
           max_ram_mb?: number;
           max_disk_mb?: number;
@@ -70,6 +73,7 @@ export interface Database {
           display_name?: string | null;
           avatar_url?: string | null;
           role?: UserRole;
+          plan_tier?: string;
           max_servers?: number;
           max_ram_mb?: number;
           max_disk_mb?: number;
@@ -119,6 +123,9 @@ export interface Database {
           status: NodeStatus;
           is_public: boolean;
           memory_overcommit_percent: number;
+          overallocation_percent: number;
+          last_seen_at: string | null;
+          running_count: number;
           created_at: string;
           updated_at: string;
         };
@@ -134,6 +141,9 @@ export interface Database {
           status?: NodeStatus;
           is_public?: boolean;
           memory_overcommit_percent?: number;
+          overallocation_percent?: number;
+          last_seen_at?: string | null;
+          running_count?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -149,6 +159,9 @@ export interface Database {
           status?: NodeStatus;
           is_public?: boolean;
           memory_overcommit_percent?: number;
+          overallocation_percent?: number;
+          last_seen_at?: string | null;
+          running_count?: number;
           updated_at?: string;
         };
         Relationships: [];
@@ -205,6 +218,8 @@ export interface Database {
           env_vars: Json;
           installed_at: string;
           last_started_at: string | null;
+          last_active_at: string | null;
+          hibernated_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -230,6 +245,8 @@ export interface Database {
           env_vars?: Json;
           installed_at?: string;
           last_started_at?: string | null;
+          last_active_at?: string | null;
+          hibernated_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -255,6 +272,8 @@ export interface Database {
           env_vars?: Json;
           installed_at?: string;
           last_started_at?: string | null;
+          last_active_at?: string | null;
+          hibernated_at?: string | null;
           updated_at?: string;
         };
         Relationships: [];
@@ -472,6 +491,37 @@ export interface Database {
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };
+}
+
+/** RPC argument helper — kept outside Database to avoid Supabase TS recursion. */
+export interface PickNodeWithStockArgs {
+  want_region: string | null;
+  want_ram_mb: number;
+  want_cpu: number;
+  want_disk_mb: number;
+}
+
+/** node_stock view row — kept outside Database for the same reason. */
+export interface NodeStock {
+  id: string;
+  name: string;
+  region_id: string;
+  total_ram_mb: number;
+  total_cpu: number;
+  total_disk_mb: number;
+  overallocation_percent: number;
+  allowed_ram_mb: number;
+  allowed_cpu: number;
+  allowed_disk_mb: number;
+  used_ram_mb: number;
+  used_cpu: number;
+  used_disk_mb: number;
+  free_ram_mb: number;
+  free_cpu: number;
+  free_disk_mb: number;
+  status: NodeStatus;
+  last_seen_at: string | null;
+  running_count: number;
 }
 
 export type Profile = Database["public"]["Tables"]["profiles"]["Row"];

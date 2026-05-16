@@ -5,38 +5,27 @@ import { useLocale, useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { MCloudLogo, MCloudWordmark } from "./MCloudLogo";
 import {
-  LayoutDashboard,
-  Server,
-  Settings,
-  Shield,
-  HelpCircle,
-  Sparkles,
-  UserCircle,
-} from "lucide-react";
+  GrassBlock,
+  ServerBlock,
+  StarIcon,
+  UserHead,
+  ShieldIcon,
+} from "@/components/pixel/Block";
 import { useAdmin } from "@/hooks/useAdmin";
+import type { ComponentType } from "react";
 
-const navItems = [
-  {
-    key: "dashboard",
-    href: "/dashboard",
-    icon: LayoutDashboard,
-    exact: true,
-  },
-  {
-    key: "servers",
-    href: "/servers",
-    icon: Server,
-  },
-  {
-    key: "upgrade",
-    href: "/upgrade",
-    icon: Sparkles,
-  },
-  {
-    key: "account",
-    href: "/account",
-    icon: UserCircle,
-  },
+interface NavItem {
+  key: string;
+  href: string;
+  Icon: ComponentType<{ size?: number; className?: string }>;
+  exact?: boolean;
+}
+
+const navItems: NavItem[] = [
+  { key: "dashboard", href: "/dashboard", Icon: GrassBlock,  exact: true },
+  { key: "servers",   href: "/servers",   Icon: ServerBlock },
+  { key: "upgrade",   href: "/upgrade",   Icon: StarIcon },
+  { key: "account",   href: "/account",   Icon: UserHead },
 ];
 
 interface SidebarProps {
@@ -45,10 +34,10 @@ interface SidebarProps {
 
 export function Sidebar({ onClose }: SidebarProps) {
   const pathname = usePathname();
-  const locale = useLocale();
-  const t = useTranslations("nav");
-  const isAdmin = useAdmin();
-  const base = `/${locale}`;
+  const locale   = useLocale();
+  const t        = useTranslations("nav");
+  const isAdmin  = useAdmin();
+  const base     = `/${locale}`;
 
   function isActive(href: string, exact?: boolean) {
     const full = `${base}${href}`;
@@ -57,58 +46,103 @@ export function Sidebar({ onClose }: SidebarProps) {
   }
 
   return (
-    <aside className="w-60 flex flex-col h-full bg-[hsl(var(--sidebar-background))] border-r border-[hsl(var(--sidebar-border))]">
-      <div className="h-14 flex items-center px-4 gap-2 border-b border-[hsl(var(--sidebar-border))]">
-        <MCloudLogo size={28} />
-        <MCloudWordmark />
+    <aside
+      className="w-60 flex flex-col h-full"
+      style={{
+        background: "hsl(var(--sidebar-background))",
+        borderRight: "2px solid hsl(var(--sidebar-border))",
+      }}
+    >
+      {/* Header — dirt strip */}
+      <div
+        className="h-14 flex items-center px-4 gap-2.5 border-b-2"
+        style={{
+          borderColor: "hsl(var(--sidebar-border))",
+          background:
+            "linear-gradient(to bottom, #5a9a2e 0%, #5a9a2e 18%, #3e6a18 24%, #866043 24%, #7a5538 100%)",
+          boxShadow: "inset 0 -3px 0 rgba(0,0,0,0.3)",
+        }}
+      >
+        <MCloudLogo size={26} />
+        <MCloudWordmark className="text-white [&>span]:text-[#a8e060]" />
       </div>
 
-      <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
-        {navItems.map((item) => (
-          <Link
-            key={item.key}
-            href={`${base}${item.href}`}
-            onClick={onClose}
-            className={cn(
-              "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
-              isActive(item.href, item.exact)
-                ? "bg-primary/10 text-primary"
-                : "text-[hsl(var(--sidebar-foreground))] hover:bg-accent hover:text-accent-foreground"
-            )}
-          >
-            <item.icon className="w-4 h-4 shrink-0" />
-            {t(item.key)}
-          </Link>
-        ))}
+      {/* Nav */}
+      <nav className="flex-1 py-3 px-2 space-y-1 overflow-y-auto">
+        {navItems.map((item) => {
+          const active = isActive(item.href, item.exact);
+          return (
+            <Link
+              key={item.key}
+              href={`${base}${item.href}`}
+              onClick={onClose}
+              className={cn(
+                "flex items-center gap-2.5 px-3 py-2.5 text-sm transition-colors select-none",
+                active
+                  ? "text-white font-semibold"
+                  : "text-[hsl(var(--sidebar-foreground))] hover:text-foreground"
+              )}
+              style={
+                active
+                  ? {
+                      background: "#5a9a2e",
+                      boxShadow:
+                        "inset -2px -3px 0 rgba(0,0,0,0.4), inset 2px 2px 0 rgba(255,255,255,0.15)",
+                      borderRadius: 0,
+                    }
+                  : { borderRadius: 0 }
+              }
+            >
+              <item.Icon size={18} />
+              <span className="font-minecraft text-[10px]">{t(item.key)}</span>
+            </Link>
+          );
+        })}
 
         {isAdmin && (
           <>
-            <div className="pt-3 pb-1 px-3">
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Admin
+            <div className="pt-4 pb-1 px-2">
+              <div className="h-px w-full" style={{ background: "hsl(var(--sidebar-border))" }} />
+              <span
+                className="block mt-2 font-minecraft text-[8px] px-1 uppercase tracking-wider"
+                style={{ color: "#9a7055" }}
+              >
+                ▸ admin
               </span>
             </div>
             <Link
               href={`${base}/admin`}
               onClick={onClose}
               className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                "flex items-center gap-2.5 px-3 py-2.5 text-sm transition-colors",
                 pathname.startsWith(`${base}/admin`)
-                  ? "bg-primary/10 text-primary"
-                  : "text-[hsl(var(--sidebar-foreground))] hover:bg-accent hover:text-accent-foreground"
+                  ? "text-white font-semibold"
+                  : "text-[hsl(var(--sidebar-foreground))] hover:text-foreground"
               )}
+              style={
+                pathname.startsWith(`${base}/admin`)
+                  ? {
+                      background: "#7a5538",
+                      boxShadow:
+                        "inset -2px -3px 0 rgba(0,0,0,0.4), inset 2px 2px 0 rgba(255,255,255,0.08)",
+                      borderRadius: 0,
+                    }
+                  : { borderRadius: 0 }
+              }
             >
-              <Shield className="w-4 h-4 shrink-0" />
-              {t("admin")}
+              <ShieldIcon size={18} />
+              <span className="font-minecraft text-[10px]">{t("admin")}</span>
             </Link>
           </>
         )}
       </nav>
 
-      <div className="p-2 border-t border-[hsl(var(--sidebar-border))]">
-        <p className="text-xs text-muted-foreground text-center px-2">
-          © 2026 Enzonic LLC
-        </p>
+      {/* Footer */}
+      <div
+        className="px-3 py-3 border-t-2 flex items-center justify-center gap-2"
+        style={{ borderColor: "hsl(var(--sidebar-border))" }}
+      >
+        <p className="font-minecraft text-[8px] text-muted-foreground">© 2026 Enzonic</p>
       </div>
     </aside>
   );

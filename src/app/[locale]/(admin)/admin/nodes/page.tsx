@@ -33,6 +33,7 @@ export default function NodesPage() {
     total_ram_mb: 8192,
     total_cpu: 400,
     total_disk_mb: 102400,
+    overallocation_percent: 100,
   });
 
   const { data: nodes = [], isLoading } = useQuery<(Node & { regions: any })[]>({
@@ -57,7 +58,7 @@ export default function NodesPage() {
         qc.invalidateQueries({ queryKey: ["nodes"] });
         toast.success("Node created");
         setOpen(false);
-        setForm({ name: "", region_id: "", fqdn: "", ip: "", total_ram_mb: 8192, total_cpu: 400, total_disk_mb: 102400 });
+        setForm({ name: "", region_id: "", fqdn: "", ip: "", total_ram_mb: 8192, total_cpu: 400, total_disk_mb: 102400, overallocation_percent: 100 });
       } else {
         toast.error("Failed to create node");
       }
@@ -192,6 +193,21 @@ export default function NodesPage() {
                 <Label>Disk (MB)</Label>
                 <Input type="number" value={form.total_disk_mb} onChange={(e) => setForm({ ...form, total_disk_mb: parseInt(e.target.value) })} />
               </div>
+            </div>
+            <div className="space-y-1">
+              <Label>Overallocation %</Label>
+              <Input
+                type="number"
+                min={50}
+                max={400}
+                value={form.overallocation_percent}
+                onChange={(e) =>
+                  setForm({ ...form, overallocation_percent: parseInt(e.target.value) })
+                }
+              />
+              <p className="text-[10px] text-muted-foreground">
+                100 = no overallocation. 150 = sell up to 1.5× physical. Higher = more risk if everyone runs at peak.
+              </p>
             </div>
           </div>
           <DialogFooter>

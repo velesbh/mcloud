@@ -71,6 +71,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "cpuExceedsPlan", quotas }, { status: 403 });
   }
 
+  // ─── Stock check ──────────────────────────────────────────────────
+  // Ask the DB which node (if any) can fit this server, given current
+  // allocations and the per-node `overallocation_percent` setting.
+  // Cast through `unknown` — Supabase's deep generic inference chokes
+  // when we type the rpc strictly. The SQL function is the contract.
+  const { data: pickedNodeId, error: pickErr } = await (
+    adminSupabase as unknown as { rpc: (fn: string, args: object) => Promise<{ data: string | null; error: { message: string } | null }> }
+  ).rpc("pick_node_with_stock", {
+    want_region: input.region_id ?? null,
+    want_ram_mb: input.ram_mb,
+    want_cpu: input.cpu_percent,
+    want_disk_mb: input.disk_mb,
+  });
+
+  if (pickErr) {
+    return NextResponse.json({ error: pickErr.message }, { status: 500 });
+  }
+  if (!pickedNodeId) {
+    return NextResponse.json(
+      { error: "outOfStock", message: "No node has enough free capacity right now. Try a different region or a smaller server." },
+      { status: 503 }
+    );
+  }
+
   const { data: server, error } = await adminSupabase
     .from("servers")
     .insert({
@@ -84,9 +108,11 @@ export async function POST(req: NextRequest) {
       cpu_percent: input.cpu_percent,
       disk_mb: input.disk_mb,
       region_id: input.region_id ?? null,
+      node_id: pickedNodeId,
       motd: input.motd ?? "A Minecraft Server",
       max_players: input.max_players ?? 20,
       status: "offline",
+      last_active_at: new Date().toISOString(),
     })
     .select()
     .single();

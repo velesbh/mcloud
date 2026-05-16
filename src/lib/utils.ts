@@ -62,6 +62,8 @@ export function getStatusDotColor(status: string): string {
       return "bg-red-500";
     case "suspended":
       return "bg-orange-500";
+    case "hibernated":
+      return "bg-amber-700";
     default:
       return "bg-zinc-400";
   }

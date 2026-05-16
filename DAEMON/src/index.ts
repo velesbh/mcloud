@@ -1,0 +1,139 @@
+import { config } from "./config.js";
+import { log } from "./logger.js";
+import { supabase } from "./supabase.js";
+import {
+  startServer,
+  stopServer,
+  restartServer,
+  sendConsoleCommand,
+  shutdownAll,
+  getRunning,
+} from "./server-manager.js";
+import { subscribeFileManager } from "./file-manager.js";
+import { startHibernationCron } from "./hibernation.js";
+
+/**
+ * Mark the node as online in the DB so admin sees it as live.
+ */
+async function registerNode() {
+  const { error } = await supabase
+    .from("nodes")
+    .update({ status: "online", last_seen_at: new Date().toISOString() })
+    .eq("id", config.nodeId);
+  if (error) log.warn("registerNode failed", { error });
+}
+
+/**
+ * Periodic heartbeat so admin can detect dead daemons.
+ */
+function startHeartbeat() {
+  setInterval(async () => {
+    const running = [...getRunning().keys()];
+    await supabase
+      .from("nodes")
+      .update({
+        last_seen_at: new Date().toISOString(),
+        running_count: running.length,
+      })
+      .eq("id", config.nodeId);
+  }, 15_000);
+}
+
+/**
+ * Subscribe to commands sent to this node.
+ *
+ * Channel format: `node:{node_id}` events:
+ *   - "start"   { serverId }
+ *   - "stop"    { serverId }
+ *   - "restart" { serverId }
+ *   - "command" { serverId, cmd }
+ *   - "watch"   { serverId }   ← causes daemon to subscribe to its file-manager
+ */
+function subscribeCommands() {
+  const channel = supabase.channel(`node:${config.nodeId}`, {
+    config: { broadcast: { self: false, ack: false } },
+  });
+
+  channel.on("broadcast", { event: "start" }, async (msg) => {
+    const id = msg.payload?.serverId;
+    if (!id) return;
+    log.info("cmd: start", { serverId: id });
+    subscribeFileManager(id);
+    await startServer(id);
+  });
+
+  channel.on("broadcast", { event: "stop" }, async (msg) => {
+    const id = msg.payload?.serverId;
+    if (id) {
+      log.info("cmd: stop", { serverId: id });
+      await stopServer(id);
+    }
+  });
+
+  channel.on("broadcast", { event: "restart" }, async (msg) => {
+    const id = msg.payload?.serverId;
+    if (id) {
+      log.info("cmd: restart", { serverId: id });
+      await restartServer(id);
+    }
+  });
+
+  channel.on("broadcast", { event: "command" }, async (msg) => {
+    const { serverId, cmd } = msg.payload ?? {};
+    if (serverId && cmd) {
+      log.info("cmd: console", { serverId, cmd });
+      await sendConsoleCommand(serverId, cmd);
+    }
+  });
+
+  channel.on("broadcast", { event: "watch" }, (msg) => {
+    const id = msg.payload?.serverId;
+    if (id) subscribeFileManager(id);
+  });
+
+  void channel.subscribe((status) => {
+    log.info(`node channel: ${status}`);
+  });
+}
+
+/**
+ * Subscribe file-manager channels for any server already assigned to this node.
+ */
+async function subscribeKnownServers() {
+  const { data, error } = await supabase
+    .from("servers")
+    .select("id")
+    .eq("node_id", config.nodeId);
+  if (error) {
+    log.warn("subscribeKnownServers failed", { error });
+    return;
+  }
+  for (const row of data ?? []) {
+    subscribeFileManager(row.id);
+  }
+  log.info("subscribed file-manager channels", { count: data?.length ?? 0 });
+}
+
+async function main() {
+  log.info("MCloud daemon starting", { nodeId: config.nodeId });
+  await registerNode();
+  startHeartbeat();
+  subscribeCommands();
+  await subscribeKnownServers();
+  startHibernationCron();
+  log.info("daemon ready");
+}
+
+main().catch((e) => {
+  log.error("fatal", { err: String(e) });
+  process.exit(1);
+});
+
+async function shutdown(sig: string) {
+  log.info(`got ${sig}, shutting down`);
+  await supabase.from("nodes").update({ status: "offline" }).eq("id", config.nodeId);
+  await shutdownAll();
+  process.exit(0);
+}
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+process.on("SIGINT", () => void shutdown("SIGINT"));

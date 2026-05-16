@@ -1,75 +1,79 @@
 @import "tailwindcss";
 
-/* shadcn/ui CSS variable theme — monochrome + green accent */
+/* =============================================
+   MINECRAFT THEME — MCloud
+   ============================================= */
 
 :root {
-  --background: 0 0% 100%;
-  --foreground: 0 0% 3.9%;
+  /* Minecraft-inspired light palette */
+  --background: 43 25% 92%;        /* parchment/dirt */
+  --foreground: 0 0% 8%;
 
   --card: 0 0% 100%;
-  --card-foreground: 0 0% 3.9%;
+  --card-foreground: 0 0% 8%;
 
   --popover: 0 0% 100%;
-  --popover-foreground: 0 0% 3.9%;
+  --popover-foreground: 0 0% 8%;
 
-  --primary: 142.1 76.2% 36.3%;
-  --primary-foreground: 355.7 100% 97.3%;
+  --primary: 100 54% 38%;           /* grass green */
+  --primary-foreground: 0 0% 100%;
 
-  --secondary: 0 0% 96.1%;
-  --secondary-foreground: 0 0% 9%;
+  --secondary: 32 35% 60%;          /* dirt brown */
+  --secondary-foreground: 0 0% 10%;
 
-  --muted: 0 0% 96.1%;
-  --muted-foreground: 0 0% 45.1%;
+  --muted: 43 20% 86%;
+  --muted-foreground: 0 0% 40%;
 
-  --accent: 0 0% 96.1%;
-  --accent-foreground: 0 0% 9%;
+  --accent: 100 54% 38%;
+  --accent-foreground: 0 0% 100%;
 
-  --destructive: 0 84.2% 60.2%;
+  --destructive: 0 72% 50%;
   --destructive-foreground: 0 0% 98%;
 
-  --border: 0 0% 89.8%;
-  --input: 0 0% 89.8%;
-  --ring: 142.1 76.2% 36.3%;
+  --border: 43 20% 78%;
+  --input: 43 20% 82%;
+  --ring: 100 54% 38%;
 
-  --radius: 0.5rem;
+  --radius: 2px;   /* near-zero radius for pixel feel */
 
-  --sidebar-background: 0 0% 98%;
-  --sidebar-foreground: 0 0% 20%;
-  --sidebar-border: 0 0% 91%;
+  --sidebar-background: 43 22% 88%;
+  --sidebar-foreground: 0 0% 14%;
+  --sidebar-border: 43 20% 76%;
 }
 
 .dark {
-  --background: 0 0% 5%;
-  --foreground: 0 0% 98%;
+  /* Deep cave / night sky Minecraft palette */
+  --background: 220 14% 8%;        /* deep dark */
+  --foreground: 0 0% 95%;
 
-  --card: 0 0% 8%;
-  --card-foreground: 0 0% 98%;
+  --card: 220 13% 12%;             /* stone block */
+  --card-foreground: 0 0% 95%;
 
-  --popover: 0 0% 8%;
-  --popover-foreground: 0 0% 98%;
+  --popover: 220 13% 11%;
+  --popover-foreground: 0 0% 95%;
 
-  --primary: 142.1 70.6% 45.3%;
-  --primary-foreground: 144.9 80.4% 10%;
+  --primary: 100 60% 42%;          /* grass green */
+  --primary-foreground: 100 80% 8%;
 
-  --secondary: 0 0% 14.9%;
-  --secondary-foreground: 0 0% 98%;
+  --secondary: 32 30% 28%;         /* dark dirt */
+  --secondary-foreground: 0 0% 90%;
 
-  --muted: 0 0% 14.9%;
-  --muted-foreground: 0 0% 63.9%;
+  --muted: 220 12% 18%;
+  --muted-foreground: 0 0% 58%;
 
-  --accent: 0 0% 14.9%;
-  --accent-foreground: 0 0% 98%;
+  --accent: 220 12% 18%;
+  --accent-foreground: 0 0% 95%;
 
-  --destructive: 0 62.8% 30.6%;
+  --destructive: 0 62% 38%;
   --destructive-foreground: 0 0% 98%;
 
-  --border: 0 0% 14.9%;
-  --input: 0 0% 14.9%;
-  --ring: 142.4 71.8% 29.2%;
+  --border: 220 10% 20%;
+  --input: 220 10% 16%;
+  --ring: 100 60% 38%;
 
-  --sidebar-background: 0 0% 7%;
-  --sidebar-foreground: 0 0% 85%;
-  --sidebar-border: 0 0% 13%;
+  --sidebar-background: 220 14% 6%;
+  --sidebar-foreground: 0 0% 82%;
+  --sidebar-border: 220 10% 14%;
 }
 
 @theme inline {
@@ -93,16 +97,19 @@
   --color-sidebar-background: hsl(var(--sidebar-background));
   --color-sidebar-foreground: hsl(var(--sidebar-foreground));
   --color-sidebar-border: hsl(var(--sidebar-border));
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
   --radius-xl: calc(var(--radius) + 4px);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-minecraft: var(--font-minecraft);
 }
 
 * {
   border-color: hsl(var(--border));
+  /* Square-ish corners everywhere */
+  border-radius: 2px;
 }
 
 body {
@@ -113,32 +120,119 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Grass block loader animation */
+/* =============================================
+   MINECRAFT FONT UTILITY
+   ============================================= */
+@layer utilities {
+  .font-minecraft {
+    font-family: var(--font-minecraft), "Courier New", monospace;
+    letter-spacing: 0.05em;
+    line-height: 1.8;
+  }
+}
+
+/* =============================================
+   PIXEL / BLOCK STYLING UTILITIES
+   ============================================= */
+
+/* "Engraved" block depth — the Minecraft button look */
+.pixel-border {
+  box-shadow:
+    inset -2px -4px 0 0 rgba(0,0,0,0.35),
+    inset 2px 2px 0 0 rgba(255,255,255,0.12),
+    0 2px 0 0 rgba(0,0,0,0.5);
+}
+
+.pixel-border-green {
+  box-shadow:
+    inset -3px -4px 0 0 rgba(0, 0, 0, 0.5),
+    inset 3px 3px 0 0 rgba(255, 255, 255, 0.25),
+    0 4px 0 0 rgba(0, 0, 0, 0.6);
+}
+
+.pixel-border-sm {
+  box-shadow:
+    inset -2px -2px 0 0 rgba(0,0,0,0.4),
+    inset 2px 2px 0 0 rgba(255,255,255,0.1);
+}
+
+/* Pixelated images/SVGs */
+.pixelated {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* =============================================
+   DIRT / STONE BACKGROUND TEXTURE
+   ============================================= */
+.bg-dirt {
+  background-color: #866043;
+  background-image:
+    repeating-conic-gradient(
+      rgba(0,0,0,0.04) 0% 25%,
+      transparent 0% 50%
+    ) 0 0 / 8px 8px;
+}
+
+.bg-stone {
+  background-color: hsl(var(--card));
+  background-image:
+    repeating-conic-gradient(
+      rgba(255,255,255,0.015) 0% 25%,
+      transparent 0% 50%
+    ) 0 0 / 4px 4px;
+}
+
+/* Grid overlay used on dark backgrounds */
+.bg-pixel-grid {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* =============================================
+   GRASS BLOCK LOADER ANIMATION
+   ============================================= */
 @keyframes grass-spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
 
-/* Smooth scrollbar in dark mode */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: hsl(var(--background));
-}
-::-webkit-scrollbar-thumb {
-  background: hsl(var(--border));
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground));
+@keyframes mc-bounce {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
 }
 
-/* xterm.js override */
-.xterm-viewport::-webkit-scrollbar {
-  width: 6px;
+@keyframes mc-blink {
+  0%, 90%, 100% { opacity: 1; }
+  95% { opacity: 0; }
 }
-.xterm-viewport::-webkit-scrollbar-thumb {
+
+/* =============================================
+   SCROLLBARS — Minecraft dark stone style
+   ============================================= */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: hsl(var(--background)); }
+::-webkit-scrollbar-thumb {
   background: hsl(var(--border));
+  border-radius: 0;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--primary));
+}
+
+.xterm-viewport::-webkit-scrollbar { width: 6px; }
+.xterm-viewport::-webkit-scrollbar-thumb { background: hsl(var(--border)); }
+
+/* =============================================
+   MINECRAFT-STYLE BUTTON OVERRIDE
+   ============================================= */
+button:not([class*="ghost"]):not([class*="outline"]):not([class*="link"]) {
+  border-radius: 0 !important;
+}
+
+/* Active / pressed state mimics Minecraft button press */
+button:active {
+  transform: translateY(1px);
 }

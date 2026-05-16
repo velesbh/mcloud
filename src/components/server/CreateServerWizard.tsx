@@ -25,14 +25,18 @@ import { useQuery } from "@tanstack/react-query";
 import type { Region } from "@/lib/supabase/types";
 import { useFreeTierLimits } from "@/hooks/useFreeTierLimits";
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import {
+  GrassBlock, DirtBlock, RedstoneBlock, StoneBlock,
+  DiamondBlock, PickaxeIcon, CompassIcon, StarIcon,
+} from "@/components/pixel/Block";
+import type { ComponentType } from "react";
 
 const STEPS = ["Name & Edition", "Version & Loader", "Region & Resources"];
 
 type Template = {
   id: string;
   label: string;
-  emoji: string;
+  Icon: ComponentType<{ size?: number }>;
   desc: string;
   edition: "java" | "bedrock";
   loader: CreateServerInput["loader"];
@@ -42,27 +46,27 @@ type Template = {
 const TEMPLATES: Template[] = [
   {
     id: "vanilla-smp",
-    label: "Vanilla SMP",
-    emoji: "🌲",
-    desc: "Classic survival, no plugins",
+    label: "Vanilla",
+    Icon: GrassBlock,
+    desc: "Classic survival",
     edition: "java",
     loader: "vanilla",
     game_version: "1.21.4",
   },
   {
     id: "paper-plugins",
-    label: "Paper + Plugins",
-    emoji: "📜",
-    desc: "Optimised, plugin-ready",
+    label: "Paper",
+    Icon: StoneBlock,
+    desc: "Plugin-ready",
     edition: "java",
     loader: "paper",
     game_version: "1.21.4",
   },
   {
     id: "fabric-mods",
-    label: "Fabric Modded",
-    emoji: "🧶",
-    desc: "Lightweight modding",
+    label: "Fabric",
+    Icon: RedstoneBlock,
+    desc: "Light mods",
     edition: "java",
     loader: "fabric",
     game_version: "1.21.4",
@@ -70,8 +74,8 @@ const TEMPLATES: Template[] = [
   {
     id: "bedrock",
     label: "Bedrock",
-    emoji: "📱",
-    desc: "Cross-platform play",
+    Icon: DiamondBlock,
+    desc: "Cross-platform",
     edition: "bedrock",
     loader: "bedrock",
     game_version: "1.21.50",
@@ -240,8 +244,8 @@ export function CreateServerWizard() {
                             : "border-border hover:border-primary/40"
                         )}
                       >
-                        <span className="text-lg leading-none">{t.emoji}</span>
-                        <span className="font-medium text-xs leading-tight">{t.label}</span>
+                        <t.Icon size={26} />
+                        <span className="font-minecraft text-[9px] leading-tight">{t.label}</span>
                         <span className="text-[10px] text-muted-foreground leading-tight">
                           {t.desc}
                         </span>
@@ -276,8 +280,9 @@ export function CreateServerWizard() {
                         );
                       }}
                     >
-                      <div className="font-semibold text-sm">
-                        {ed === "java" ? "☕ Java Edition" : "📱 Bedrock Edition"}
+                      <div className="flex items-center gap-2 font-semibold text-sm">
+                        {ed === "java" ? <DirtBlock size={18} /> : <DiamondBlock size={18} />}
+                        {ed === "java" ? "Java Edition" : "Bedrock Edition"}
                       </div>
                       <div className="text-xs text-muted-foreground mt-1">
                         {ed === "java"
@@ -378,8 +383,14 @@ export function CreateServerWizard() {
                         )}
                         onClick={() => form.setValue("region_id", region.id)}
                       >
-                        <div className="text-lg">{region.flag_emoji}</div>
-                        <div className="font-semibold text-sm mt-1">{region.name}</div>
+                        <div className="flex items-center gap-2">
+                          {region.flag_emoji ? (
+                            <span className="text-base">{region.flag_emoji}</span>
+                          ) : (
+                            <CompassIcon size={16} />
+                          )}
+                          <div className="font-minecraft text-[9px]">{region.name}</div>
+                        </div>
                       </Card>
                     ))}
                   </div>
@@ -389,8 +400,8 @@ export function CreateServerWizard() {
               <div className="border border-border bg-muted/30 rounded-lg p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium flex items-center gap-2">
-                    <Sparkles className="w-3.5 h-3.5 text-primary" />
-                    {planName} plan resources
+                    <StarIcon size={14} />
+                    <span className="font-minecraft text-[10px]">{planName} resources</span>
                   </p>
                   {!planKey && (
                     <Link

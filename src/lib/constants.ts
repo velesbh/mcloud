@@ -51,6 +51,7 @@ export const SERVER_STATUS_LABELS: Record<string, string> = {
   restarting: "Restarting",
   error: "Error",
   suspended: "Suspended",
+  hibernated: "Hibernating",
 };
 
 export const MODRINTH_PROJECT_TYPES = [

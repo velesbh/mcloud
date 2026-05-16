@@ -3,6 +3,11 @@ import { auth } from "@clerk/nextjs/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 
+/**
+ * Send a console command. Relays to the daemon over `node:{node_id}`.
+ * The daemon writes to the server process stdin and broadcasts output
+ * back on `console:{server_id}`.
+ */
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -12,53 +17,45 @@ export async function POST(
 
   const { id } = await params;
   const { command } = await req.json();
+  if (!command || typeof command !== "string") {
+    return NextResponse.json({ error: "missingCommand" }, { status: 400 });
+  }
 
-  const supabase = await createServerSupabaseClient();
-  const { data: server } = await supabase
+  const admin = createAdminSupabaseClient();
+  const { data: server } = await admin
     .from("servers")
-    .select("id, status")
+    .select("id, clerk_user_id, status, node_id")
     .eq("id", id)
     .single();
 
   if (!server) return NextResponse.json({ error: "Not found" }, { status: 404 });
-
-  const adminSupabase = createAdminSupabaseClient();
-
-  // Insert user command
-  await adminSupabase.from("console_events").insert({
-    server_id: id,
-    line: `> ${command}`,
-    source: "user",
-  });
-
-  // Simulate server response for common commands
-  let response: string | null = null;
-  const cmd = command.trim().toLowerCase();
-  if (cmd === "list") {
-    response = "[Server thread/INFO]: There are 0 of a max of 20 players online:";
-  } else if (cmd === "help") {
-    response = "[Server thread/INFO]: --- Showing help page 1 of 1 (/help <page>) ---";
-  } else if (cmd.startsWith("say ")) {
-    response = `[Server thread/INFO]: [${userId.slice(0, 8)}] ${command.slice(4)}`;
-  } else if (cmd === "stop") {
-    await adminSupabase.from("servers").update({ status: "stopping" }).eq("id", id);
-    response = "[Server thread/INFO]: Stopping server";
-    await adminSupabase.from("servers").update({ status: "offline" }).eq("id", id);
-  } else {
-    response = `[Server thread/WARN]: Unknown command: ${command.split(" ")[0]}`;
+  if (server.clerk_user_id !== userId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  if (!server.node_id) {
+    return NextResponse.json({ error: "noNode" }, { status: 409 });
   }
 
-  if (response) {
-    await adminSupabase.from("console_events").insert({
-      server_id: id,
-      line: response,
-      source: "server",
+  const channel = admin.channel(`node:${server.node_id}`);
+  await new Promise<void>((resolve) => {
+    channel.subscribe(async (status) => {
+      if (status === "SUBSCRIBED") {
+        await channel.send({
+          type: "broadcast",
+          event: "command",
+          payload: { serverId: id, cmd: command },
+        });
+        resolve();
+      }
     });
-  }
+    setTimeout(resolve, 1500);
+  });
+  void admin.removeChannel(channel);
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ ok: true });
 }
 
+/** Last 100 console lines for replay on console mount. */
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
