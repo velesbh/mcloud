@@ -116,12 +116,28 @@ export default function NodesPage() {
                     <p className="text-xs text-muted-foreground font-mono">{node.ip}</p>
                   </div>
                   <div className="flex items-center gap-1">
-                    <Badge
-                      variant="outline"
-                      className={node.status === "online" ? "text-green-500 border-green-500/30" : "text-zinc-500"}
-                    >
-                      {node.status}
-                    </Badge>
+                    {(() => {
+                      const stale = !node.last_seen_at || Date.now() - new Date(node.last_seen_at).getTime() > 75_000;
+                      const effectiveStatus = stale ? "offline" : node.status;
+                      const secsAgo = node.last_seen_at
+                        ? Math.round((Date.now() - new Date(node.last_seen_at).getTime()) / 1000)
+                        : null;
+                      return (
+                        <div className="flex flex-col items-end gap-0.5">
+                          <Badge
+                            variant="outline"
+                            className={effectiveStatus === "online" ? "text-green-500 border-green-500/30" : "text-amber-500 border-amber-500/30"}
+                          >
+                            {effectiveStatus}
+                          </Badge>
+                          {secsAgo !== null && (
+                            <span className="text-[10px] text-muted-foreground">
+                              {secsAgo < 60 ? `${secsAgo}s ago` : `${Math.floor(secsAgo / 60)}m ago`}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
                     <button
                       onClick={() => { setAssignTarget(node); setAssignRegion(node.region_id ?? ""); }}
                       className="p-1 text-muted-foreground hover:text-foreground transition-colors"

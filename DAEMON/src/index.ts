@@ -53,16 +53,31 @@ async function registerNode() {
  * Periodic heartbeat so admin can detect dead daemons.
  */
 function startHeartbeat() {
-  setInterval(async () => {
+  let consecutiveFailures = 0;
+
+  async function beat() {
     const running = [...getRunning().keys()];
-    await supabase
+    const { error } = await supabase
       .from("nodes")
       .update({
+        status: "online",
         last_seen_at: new Date().toISOString(),
         running_count: running.length,
       })
       .eq("id", config.nodeId);
-  }, 15_000);
+
+    if (error) {
+      consecutiveFailures++;
+      log.warn("heartbeat failed", { attempt: consecutiveFailures, error });
+      if (consecutiveFailures >= 5) {
+        log.error("5 consecutive heartbeat failures — check Supabase connectivity");
+      }
+    } else {
+      consecutiveFailures = 0;
+    }
+  }
+
+  setInterval(() => void beat(), 15_000);
 }
 
 /**
@@ -110,6 +125,18 @@ function subscribeCommands() {
       log.info("cmd: console", { serverId, cmd });
       await sendConsoleCommand(serverId, cmd);
     }
+  });
+
+  channel.on("broadcast", { event: "kill" }, async (msg) => {
+    const id = msg.payload?.serverId;
+    if (!id) return;
+    log.info("cmd: kill (SIGKILL)", { serverId: id });
+    const running = getRunning().get(id);
+    if (running) {
+      running.proc.kill("SIGKILL");
+    }
+    // Force DB state regardless of whether process existed
+    await supabase.from("servers").update({ status: "offline" }).eq("id", id);
   });
 
   channel.on("broadcast", { event: "watch" }, (msg) => {
