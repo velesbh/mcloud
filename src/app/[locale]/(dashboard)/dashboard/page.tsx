@@ -1,7 +1,8 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
+import { useSupabaseClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { useLocale } from "next-intl";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,21 @@ export default function DashboardPage() {
     queryFn: () => fetch("/api/servers").then((r) => r.json()),
     refetchInterval: 10_000,
   });
+
+  const supabase = useSupabaseClient();
+
+  // Realtime: invalidate query whenever any of the user's servers change status
+  useEffect(() => {
+    const channel = supabase
+      .channel("dashboard-server-status")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "mcloud", table: "servers" },
+        () => { qc.invalidateQueries({ queryKey: ["servers"] }); }
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [qc, supabase]);
 
   const counts = useMemo(() => {
     const running = servers.filter((s) => s.status === "running").length;

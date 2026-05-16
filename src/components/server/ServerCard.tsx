@@ -1,6 +1,6 @@
 "use client";
 import { motion } from "motion/react";
-import { Copy, Check, Play, Square, RotateCcw, Trash2 } from "lucide-react";
+import { Copy, Check, Play, Square, RotateCcw, Trash2, Zap, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -9,7 +9,7 @@ import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { LoadingSpinner } from "@/components/shared/MinecraftLoader";
 import { ServerBlock, CompassIcon } from "@/components/pixel/Block";
 import type { Server as ServerType } from "@/lib/supabase/types";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useLocale } from "next-intl";
 import { toast } from "sonner";
@@ -32,11 +32,18 @@ export function ServerCard({ server, index = 0, onDeleted }: ServerCardProps) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [currentStatus, setCurrentStatus] = useState(server.status);
 
+  // Sync status when query refetches (but don't clobber an in-flight optimistic update)
+  useEffect(() => {
+    if (!actionLoading) {
+      setCurrentStatus(server.status);
+    }
+  }, [server.status, actionLoading]);
+
   const address = server.allocations
     ? `${server.allocations.ip}:${server.allocations.port}`
     : null;
 
-  async function runAction(action: "start" | "stop" | "restart") {
+  async function runAction(action: "start" | "stop" | "restart" | "kill") {
     setActionLoading(action);
     try {
       const res = await fetch(`/api/servers/${server.id}/action`, {
@@ -48,6 +55,10 @@ export function ServerCard({ server, index = 0, onDeleted }: ServerCardProps) {
       if (data.error === "hibernated") {
         toast.error("This server is hibernating. Wake it up first.");
         router.refresh();
+        return;
+      }
+      if (!res.ok) {
+        toast.error(data.message ?? data.error ?? "Action failed");
         return;
       }
       if (data.status) setCurrentStatus(data.status);
@@ -162,26 +173,36 @@ export function ServerCard({ server, index = 0, onDeleted }: ServerCardProps) {
           </div>
         </div>
 
-        {address && !isHibernated && (
-          <div
-            className="flex items-center gap-2 px-3 py-2 border"
-            style={{ background: "hsl(var(--muted)/0.5)", borderColor: "hsl(var(--border))", borderRadius: 0 }}
-          >
-            <code className="text-xs font-mono text-muted-foreground flex-1 truncate">
-              {address}
-            </code>
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={copyAddress}
-              className="text-muted-foreground hover:text-foreground transition-colors"
+        {!isHibernated && (
+          address ? (
+            <div
+              className="flex items-center gap-2 px-3 py-2 border"
+              style={{ background: "hsl(var(--muted)/0.5)", borderColor: "hsl(var(--border))", borderRadius: 0 }}
             >
-              {copiedAddr ? (
-                <Check className="w-3.5 h-3.5 text-primary" />
-              ) : (
-                <Copy className="w-3.5 h-3.5" />
-              )}
-            </motion.button>
-          </div>
+              <code className="text-xs font-mono text-muted-foreground flex-1 truncate">
+                {address}
+              </code>
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={copyAddress}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {copiedAddr ? (
+                  <Check className="w-3.5 h-3.5 text-primary" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
+              </motion.button>
+            </div>
+          ) : (
+            <div
+              className="flex items-center gap-2 px-3 py-2 border text-xs"
+              style={{ background: "hsl(var(--muted)/0.3)", borderColor: "hsl(var(--border))", borderRadius: 0, color: "hsl(var(--muted-foreground))" }}
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              <span>No IP assigned — contact admin</span>
+            </div>
+          )
         )}
 
         {isHibernated && (
@@ -268,9 +289,21 @@ export function ServerCard({ server, index = 0, onDeleted }: ServerCardProps) {
           )}
 
           {isTransitioning && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2">
               <LoadingSpinner size={14} />
-              <span className="capitalize font-minecraft text-[9px]">{currentStatus}...</span>
+              <span className="capitalize font-minecraft text-[9px] text-muted-foreground">{currentStatus}...</span>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="gap-1 font-minecraft text-[9px] text-orange-500 hover:text-orange-400 h-7 px-2"
+                style={{ borderRadius: 0 }}
+                onClick={() => runAction("kill")}
+                disabled={!!actionLoading}
+                title="Force stop (SIGKILL)"
+              >
+                <Zap className="w-3 h-3" />
+                Force Stop
+              </Button>
             </div>
           )}
 

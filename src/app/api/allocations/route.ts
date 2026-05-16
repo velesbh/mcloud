@@ -12,10 +12,13 @@ export async function GET() {
   const supabase = createAdminSupabaseClient();
   const { data, error } = await supabase
     .from("allocations")
-    .select("*, nodes(name), servers(name)")
+    .select("*, nodes!allocations_node_id_fkey(name), servers!allocations_server_id_fkey(name)")
     .order("created_at", { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[allocations GET]", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
   return NextResponse.json(data ?? []);
 }
 

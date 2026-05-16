@@ -26,12 +26,22 @@ export default function AllocationsPage() {
 
   const { data: allocations = [], isLoading } = useQuery<any[]>({
     queryKey: ["allocations"],
-    queryFn: () => fetch("/api/allocations").then((r) => r.json()),
+    queryFn: async () => {
+      const res = await fetch("/api/allocations");
+      const data = await res.json();
+      if (!Array.isArray(data)) return [];
+      return data;
+    },
   });
 
   const { data: nodes = [] } = useQuery<Node[]>({
     queryKey: ["nodes"],
-    queryFn: () => fetch("/api/nodes").then((r) => r.json()),
+    queryFn: async () => {
+      const res = await fetch("/api/nodes");
+      const data = await res.json();
+      if (!Array.isArray(data)) return [];
+      return data;
+    },
   });
 
   async function createAllocation() {

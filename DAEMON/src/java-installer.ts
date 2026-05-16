@@ -1,0 +1,112 @@
+import { spawn } from "node:child_process";
+import { log } from "./logger.js";
+import { broadcastConsole } from "./console-bridge.js";
+
+/**
+ * Returns the minimum Java major version required for a given Minecraft version.
+ *
+ * Java 21 — 1.20.5+
+ * Java 17 — 1.17 – 1.20.4
+ * Java 8  — ≤ 1.16
+ */
+export function requiredJavaMajor(gameVersion: string): 8 | 17 | 21 {
+  const [maj, min] = gameVersion.split(".").map(Number);
+  if (maj > 1 || (maj === 1 && min >= 21)) return 21;
+  if (maj === 1 && min >= 17) return 17;
+  return 8;
+}
+
+/** Debian/Ubuntu package name for a given Java major version. */
+function javaPackage(major: 8 | 17 | 21): string {
+  const map: Record<number, string> = {
+    8:  "openjdk-8-jre-headless",
+    17: "openjdk-17-jre-headless",
+    21: "openjdk-21-jre-headless",
+  };
+  return map[major];
+}
+
+/**
+ * Run a shell command and stream every output line through `onLine`.
+ * Resolves with the exit code.
+ */
+function runStreamed(
+  cmd: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+  onLine: (line: string) => void
+): Promise<number> {
+  return new Promise((resolve) => {
+    const proc = spawn(cmd, args, { env });
+
+    function feed(buf: Buffer) {
+      const text = buf.toString("utf8");
+      for (const raw of text.split("\n")) {
+        const line = raw.replace(/\r$/, "").trim();
+        if (line) onLine(line);
+      }
+    }
+
+    proc.stdout.on("data", feed);
+    proc.stderr.on("data", feed);
+
+    proc.on("error", (err) => {
+      onLine(`[installer-error] ${err.message}`);
+      resolve(1);
+    });
+
+    proc.on("exit", (code) => resolve(code ?? 1));
+  });
+}
+
+/**
+ * Installs the correct Java JRE for `gameVersion` via apt-get and streams
+ * every output line to the given server's console channel.
+ *
+ * Returns `true` on success, `false` on failure.
+ */
+export async function installJava(
+  gameVersion: string,
+  serverId: string
+): Promise<boolean> {
+  const major = requiredJavaMajor(gameVersion);
+  const pkg   = javaPackage(major);
+
+  log.info("auto-installing java", { major, pkg, serverId });
+
+  const emit = async (line: string) => {
+    void broadcastConsole(serverId, `[installer] ${line}`, "system");
+  };
+
+  await emit(`Java ${major} not found — installing ${pkg} via apt-get...`);
+
+  const env = { ...process.env, DEBIAN_FRONTEND: "noninteractive" };
+
+  // Step 1: apt-get update
+  await emit("Running: apt-get update");
+  const updateCode = await runStreamed(
+    "apt-get", ["update", "-qq"],
+    env,
+    (l) => void emit(l)
+  );
+  if (updateCode !== 0) {
+    await emit(`apt-get update failed (code ${updateCode}). Is the daemon running as root?`);
+    return false;
+  }
+
+  // Step 2: apt-get install
+  await emit(`Running: apt-get install -y ${pkg}`);
+  const installCode = await runStreamed(
+    "apt-get", ["install", "-y", pkg],
+    env,
+    (l) => void emit(l)
+  );
+  if (installCode !== 0) {
+    await emit(`apt-get install failed (code ${installCode}).`);
+    return false;
+  }
+
+  await emit(`Java ${major} installed successfully.`);
+  log.info("java installed", { major, pkg });
+  return true;
+}
