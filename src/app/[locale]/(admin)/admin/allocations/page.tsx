@@ -38,7 +38,6 @@ export default function AllocationsPage() {
       const data = await res.json();
       return Array.isArray(data) ? data : [];
     },
-    initialData: [],
   });
 
   const { data: nodes = [] } = useQuery<Node[]>({
@@ -48,7 +47,6 @@ export default function AllocationsPage() {
       const data = await res.json();
       return Array.isArray(data) ? data : [];
     },
-    initialData: [],
   });
 
   // Group allocations by node_id
