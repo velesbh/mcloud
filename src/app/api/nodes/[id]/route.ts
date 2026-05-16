@@ -15,7 +15,7 @@ export async function GET(
   const supabase = createAdminSupabaseClient();
   const { data, error } = await supabase
     .from("nodes")
-    .select("*, regions(name, flag_emoji), allocations(*)")
+    .select("*, regions!nodes_region_id_fkey(name, flag_emoji), allocations!allocations_node_id_fkey(*)")
     .eq("id", id)
     .single();
 

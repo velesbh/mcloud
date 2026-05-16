@@ -17,7 +17,7 @@ export async function GET(
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("servers")
-    .select("*, allocations(ip, port), regions(name, flag_emoji, slug), nodes(name, fqdn)")
+    .select("*, allocations!servers_allocation_id_fkey(ip, port), regions!servers_region_id_fkey(name, flag_emoji, slug), nodes!servers_node_id_fkey(name, fqdn)")
     .eq("id", id)
     .single();
 
