@@ -31,6 +31,7 @@ import {
   GrassBlock, DirtBlock, RedstoneBlock, StoneBlock,
   DiamondBlock, PickaxeIcon, CompassIcon, StarIcon,
 } from "@/components/pixel/Block";
+import { PixelSlider } from "@/components/pixel/PixelPanel";
 import type { ComponentType } from "react";
 
 const STEPS = ["Name & Edition", "Version & Loader", "Region & Resources"];
@@ -447,39 +448,51 @@ export function CreateServerWizard() {
                 </div>
               )}
 
-              <div className="border border-border bg-muted/30 rounded-lg p-4 space-y-3">
+              <div
+                className="p-4 space-y-5"
+                style={{ border: "2px solid hsl(var(--border))", background: "rgba(0,0,0,0.2)" }}
+              >
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium flex items-center gap-2">
+                  <p className="flex items-center gap-2">
                     <StarIcon size={14} />
-                    <span className="font-minecraft text-[10px]">{planName} resources</span>
+                    <span className="font-minecraft text-[10px] uppercase">Resources</span>
                   </p>
                   {!planKey && (
                     <Link
                       href={`/${locale}/upgrade`}
-                      className="text-xs text-primary hover:underline"
+                      className="text-xs text-primary hover:underline font-minecraft uppercase"
                     >
-                      Upgrade →
+                      Upgrade for more →
                     </Link>
                   )}
                 </div>
-                <div className="grid grid-cols-3 gap-3 text-center">
-                  <div>
-                    <div className="text-lg font-bold text-primary">
-                      {(maxRamMb / 1024).toFixed(maxRamMb % 1024 === 0 ? 0 : 1)} GB
-                    </div>
-                    <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Max RAM</div>
-                  </div>
-                  <div>
-                    <div className="text-lg font-bold text-primary">
-                      {(maxDiskMb / 1024).toFixed(maxDiskMb % 1024 === 0 ? 0 : 1)} GB
-                    </div>
-                    <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Max Disk</div>
-                  </div>
-                  <div>
-                    <div className="text-lg font-bold text-primary">{maxCpuPercent}%</div>
-                    <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Max CPU</div>
-                  </div>
-                </div>
+                <PixelSlider
+                  label="RAM"
+                  value={form.watch("ram_mb")}
+                  min={512}
+                  max={maxRamMb}
+                  step={512}
+                  onChange={(v) => form.setValue("ram_mb", v)}
+                  format={(v) => v >= 1024 ? `${(v / 1024).toFixed(v % 1024 === 0 ? 0 : 1)} GB` : `${v} MB`}
+                />
+                <PixelSlider
+                  label="Disk"
+                  value={form.watch("disk_mb")}
+                  min={1024}
+                  max={maxDiskMb}
+                  step={1024}
+                  onChange={(v) => form.setValue("disk_mb", v)}
+                  format={(v) => v >= 1024 ? `${(v / 1024).toFixed(v % 1024 === 0 ? 0 : 1)} GB` : `${v} MB`}
+                />
+                <PixelSlider
+                  label="CPU"
+                  value={form.watch("cpu_percent")}
+                  min={25}
+                  max={maxCpuPercent}
+                  step={25}
+                  onChange={(v) => form.setValue("cpu_percent", v)}
+                  format={(v) => v >= 100 ? `${(v / 100).toFixed(v % 100 === 0 ? 0 : 1)} cores` : `${v}%`}
+                />
               </div>
             </motion.div>
           )}

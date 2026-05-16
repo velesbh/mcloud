@@ -128,3 +128,92 @@ export function PixelButton({
     </button>
   );
 }
+
+/**
+ * PixelSlider — Minecraft-style range input with pixel tracks and a square thumb.
+ * Renders the fill as a CSS variable trick so it works without JS.
+ */
+export function PixelSlider({
+  value,
+  min,
+  max,
+  step = 1,
+  onChange,
+  label,
+  format,
+  className,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  onChange: (v: number) => void;
+  label?: string;
+  format?: (v: number) => string;
+  className?: string;
+}) {
+  const pct = Math.round(((value - min) / (max - min)) * 100);
+  const display = format ? format(value) : String(value);
+
+  return (
+    <div className={cn("space-y-1.5", className)}>
+      {(label || format) && (
+        <div className="flex items-center justify-between">
+          {label && (
+            <span className="text-[10px] font-minecraft uppercase text-muted-foreground">
+              {label}
+            </span>
+          )}
+          <span
+            className="font-mono text-xs text-foreground px-1.5 py-0.5"
+            style={{ background: "rgba(0,0,0,0.35)", border: "1px solid #3a3a3a" }}
+          >
+            {display}
+          </span>
+        </div>
+      )}
+      <div className="relative h-5 flex items-center">
+        {/* Track background */}
+        <div
+          className="absolute inset-x-0 h-3"
+          style={{ background: "#1a1a1a", border: "2px solid #3a3a3a" }}
+        />
+        {/* Fill */}
+        <div
+          className="absolute h-3 left-0"
+          style={{
+            width: `${pct}%`,
+            background: "linear-gradient(90deg, #3e7a1a, #5a9a2e)",
+            border: "2px solid #2d5e10",
+            borderRight: "none",
+            pointerEvents: "none",
+          }}
+        />
+        {/* Native range for interaction — visually hidden but handles all mouse/touch events */}
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="absolute inset-x-0 w-full opacity-0 cursor-pointer h-5"
+          style={{ zIndex: 2 }}
+        />
+        {/* Pixel thumb indicator */}
+        <div
+          className="absolute pointer-events-none"
+          style={{
+            left: `calc(${pct}% - 7px)`,
+            width: 14,
+            height: 20,
+            background: "#c6c6c6",
+            border: "2px solid #1a1a1a",
+            boxShadow: "inset 1px 1px 0 rgba(255,255,255,0.4)",
+            zIndex: 1,
+          }}
+        />
+      </div>
+    </div>
+  );
+}

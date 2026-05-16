@@ -5,46 +5,82 @@ import { GrassBlock, DirtBlock, StoneBlock, ChestBlock, PickaxeIcon } from "@/co
 /**
  * Pixel-art status overlay shown when a server is transitioning.
  *
- * - "starting"  → grass blocks pulsing in a row (loading the world)
- * - "stopping"  → blocks fading out one by one
+ * - "starting"  → blocks marching + loading bar
+ * - "stopping"  → blocks fading/sinking
  * - "restarting"→ pickaxe swing animation
  * - "installing"→ chest unpacking with falling blocks
  */
-export function StatusOverlay({ status }: { status: "starting" | "stopping" | "restarting" | "installing" }) {
+export function StatusOverlay({
+  status,
+}: {
+  status: "starting" | "stopping" | "restarting" | "installing";
+}) {
   if (status === "installing") return <InstallingAnim />;
-  if (status === "starting")   return <StartingAnim />;
-  if (status === "stopping")   return <StoppingAnim />;
+  if (status === "starting") return <StartingAnim />;
+  if (status === "stopping") return <StoppingAnim />;
   if (status === "restarting") return <RestartingAnim />;
   return null;
 }
 
+/* ── Starting ─────────────────────────────────────────────── */
+const START_BLOCKS = [GrassBlock, DirtBlock, StoneBlock, GrassBlock, DirtBlock, StoneBlock, GrassBlock];
+
 function StartingAnim() {
   return (
-    <div className="flex flex-col items-center justify-center gap-4 py-6">
-      <div className="flex items-end gap-1">
-        {[0, 1, 2, 3, 4].map((i) => (
+    <div className="flex flex-col items-center justify-center gap-5 py-8">
+      {/* Marching pixel-art blocks */}
+      <div className="flex items-end gap-0.5">
+        {START_BLOCKS.map((Block, i) => (
           <motion.div
             key={i}
-            initial={{ y: -8, opacity: 0.4 }}
-            animate={{ y: [0, -6, 0], opacity: [0.4, 1, 0.4] }}
+            animate={{ y: [0, -10, 0], scaleY: [1, 1.1, 1] }}
             transition={{
-              duration: 0.9,
+              duration: 0.65,
               repeat: Infinity,
-              delay: i * 0.12,
+              delay: i * 0.09,
               ease: "easeInOut",
             }}
           >
-            <GrassBlock size={28} />
+            <Block size={26} />
           </motion.div>
         ))}
       </div>
-      <p className="font-minecraft text-[11px] uppercase tracking-wider text-primary">
-        Generating world<DotPulse />
-      </p>
+
+      {/* Chunky pixel progress bar */}
+      <div
+        className="relative overflow-hidden"
+        style={{
+          width: 200,
+          height: 12,
+          background: "#1a1a1a",
+          border: "2px solid #3a3a3a",
+        }}
+      >
+        <motion.div
+          className="absolute inset-y-0 left-0"
+          style={{
+            width: "60%",
+            background: "linear-gradient(90deg, #3e7a1a, #5a9a2e, #6db535, #5a9a2e, #3e7a1a)",
+            backgroundSize: "200% 100%",
+          }}
+          animate={{ x: ["-100%", "200%"] }}
+          transition={{ duration: 1.8, repeat: Infinity, ease: "linear" }}
+        />
+      </div>
+
+      <div className="text-center space-y-0.5">
+        <p className="font-minecraft text-[11px] uppercase tracking-wider text-primary">
+          Starting server<DotPulse />
+        </p>
+        <p className="text-[10px] text-muted-foreground font-minecraft">
+          This may take up to 60 seconds
+        </p>
+      </div>
     </div>
   );
 }
 
+/* ── Stopping ─────────────────────────────────────────────── */
 function StoppingAnim() {
   return (
     <div className="flex flex-col items-center justify-center gap-4 py-6">
@@ -52,11 +88,11 @@ function StoppingAnim() {
         {[0, 1, 2, 3, 4].map((i) => (
           <motion.div
             key={i}
-            animate={{ opacity: [1, 0.15, 1] }}
+            animate={{ opacity: [1, 0.15, 1], y: [0, 4, 0] }}
             transition={{
-              duration: 1.2,
+              duration: 1.4,
               repeat: Infinity,
-              delay: i * 0.15,
+              delay: i * 0.18,
               ease: "easeInOut",
             }}
           >
@@ -71,12 +107,13 @@ function StoppingAnim() {
   );
 }
 
+/* ── Restarting ───────────────────────────────────────────── */
 function RestartingAnim() {
   return (
     <div className="flex flex-col items-center justify-center gap-4 py-6">
       <motion.div
-        animate={{ rotate: [0, -25, 25, 0] }}
-        transition={{ duration: 0.9, repeat: Infinity, ease: "easeInOut" }}
+        animate={{ rotate: [0, -30, 30, 0] }}
+        transition={{ duration: 0.8, repeat: Infinity, ease: "easeInOut" }}
         style={{ transformOrigin: "70% 70%" }}
       >
         <PickaxeIcon size={48} />
@@ -88,35 +125,34 @@ function RestartingAnim() {
   );
 }
 
+/* ── Installing ───────────────────────────────────────────── */
 function InstallingAnim() {
   return (
     <div className="flex flex-col items-center justify-center gap-5 py-6">
-      <div className="relative h-24 w-32 flex items-end justify-center">
-        {/* Stone blocks falling out of the chest */}
-        {[0, 1, 2].map((i) => (
+      <div className="relative h-28 w-36 flex items-end justify-center">
+        {[0, 1, 2, 3].map((i) => (
           <motion.div
             key={i}
             className="absolute"
-            style={{ left: `${30 + i * 20}%`, top: 0 }}
+            style={{ left: `${20 + i * 18}%`, top: 0 }}
             initial={{ y: -8, opacity: 0 }}
-            animate={{ y: [0, 48], opacity: [1, 1, 0] }}
+            animate={{ y: [0, 56], opacity: [1, 1, 0] }}
             transition={{
-              duration: 1.4,
+              duration: 1.2,
               repeat: Infinity,
-              delay: i * 0.35,
+              delay: i * 0.3,
               ease: "easeIn",
             }}
           >
-            <StoneBlock size={16} />
+            <StoneBlock size={14} />
           </motion.div>
         ))}
-        {/* Chest at the bottom */}
         <motion.div
-          animate={{ y: [0, -2, 0] }}
-          transition={{ duration: 0.6, repeat: Infinity, ease: "easeInOut" }}
+          animate={{ y: [0, -3, 0] }}
+          transition={{ duration: 0.55, repeat: Infinity, ease: "easeInOut" }}
           className="absolute bottom-0"
         >
-          <ChestBlock size={48} />
+          <ChestBlock size={52} />
         </motion.div>
       </div>
       <div className="text-center space-y-1">
@@ -131,6 +167,7 @@ function InstallingAnim() {
   );
 }
 
+/* ── Shared helpers ───────────────────────────────────────── */
 function DotPulse() {
   return (
     <span className="inline-block ml-1">

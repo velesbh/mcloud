@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { ModCard } from "@/components/modrinth/ModCard";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PageLoader } from "@/components/shared/LoadingScreen";
@@ -117,19 +116,6 @@ export default function ModsPage({ params }: { params: Promise<{ id: string }> }
 
   return (
     <div className="space-y-4">
-      {/* Server context chip */}
-      {server && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <Badge variant="secondary" className="gap-1 font-mono text-xs">
-            {server.edition === "java" ? "☕" : "📱"} {server.game_version}
-          </Badge>
-          <Badge variant="secondary" className="capitalize text-xs">{server.loader}</Badge>
-          <span className="text-xs text-muted-foreground">
-            Showing {modrinthLoader ? `${modrinthLoader}-compatible` : "all"} content
-          </span>
-        </div>
-      )}
-
       <Tabs defaultValue="browse">
         <TabsList>
           <TabsTrigger value="browse">Browse</TabsTrigger>

@@ -2,7 +2,7 @@
 import { use, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Save, AlertTriangle, Info, Trash2 } from "lucide-react";
-import { PixelPanel, PixelButton } from "@/components/pixel/PixelPanel";
+import { PixelPanel, PixelButton, PixelSlider } from "@/components/pixel/PixelPanel";
 import { LoadingSpinner } from "@/components/shared/MinecraftLoader";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { MC_JAVA_VERSIONS, JAVA_LOADERS } from "@/lib/constants";
@@ -222,42 +222,28 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
       </PixelPanel>
 
       {/* Resources */}
-      <PixelPanel variant="stone" title="Resources" className="p-4 space-y-3">
-        <div className="grid sm:grid-cols-3 gap-3">
-          <div>
-            <label className="text-[10px] font-minecraft uppercase text-muted-foreground">RAM (MB)</label>
-            <input
-              type="number" min={512} max={32768} step={512}
-              value={form.ram_mb}
-              onChange={(e) => setForm({ ...form, ram_mb: parseInt(e.target.value) || 512 })}
-              className="mt-1 w-full px-3 py-2 text-sm font-mono bg-background border-2 border-border focus:border-primary outline-none"
-              style={{ borderRadius: 0 }}
-            />
-            <p className="text-[10px] text-muted-foreground mt-1">{(form.ram_mb / 1024).toFixed(1)} GB</p>
-          </div>
-          <div>
-            <label className="text-[10px] font-minecraft uppercase text-muted-foreground">CPU (%)</label>
-            <input
-              type="number" min={10} max={400} step={10}
-              value={form.cpu_percent}
-              onChange={(e) => setForm({ ...form, cpu_percent: parseInt(e.target.value) || 10 })}
-              className="mt-1 w-full px-3 py-2 text-sm font-mono bg-background border-2 border-border focus:border-primary outline-none"
-              style={{ borderRadius: 0 }}
-            />
-            <p className="text-[10px] text-muted-foreground mt-1">{form.cpu_percent >= 100 ? `${Math.floor(form.cpu_percent / 100)} core${form.cpu_percent >= 200 ? "s" : ""}` : `${form.cpu_percent}% of 1 core`}</p>
-          </div>
-          <div>
-            <label className="text-[10px] font-minecraft uppercase text-muted-foreground">Disk (MB)</label>
-            <input
-              type="number" min={1024} max={524288} step={1024}
-              value={form.disk_mb}
-              onChange={(e) => setForm({ ...form, disk_mb: parseInt(e.target.value) || 1024 })}
-              className="mt-1 w-full px-3 py-2 text-sm font-mono bg-background border-2 border-border focus:border-primary outline-none"
-              style={{ borderRadius: 0 }}
-            />
-            <p className="text-[10px] text-muted-foreground mt-1">{(form.disk_mb / 1024).toFixed(1)} GB</p>
-          </div>
-        </div>
+      <PixelPanel variant="stone" title="Resources" className="p-4 space-y-4">
+        <PixelSlider
+          label="RAM"
+          value={form.ram_mb}
+          min={512} max={32768} step={512}
+          onChange={(v) => setForm({ ...form, ram_mb: v })}
+          format={(v) => v >= 1024 ? `${(v / 1024).toFixed(v % 1024 === 0 ? 0 : 1)} GB` : `${v} MB`}
+        />
+        <PixelSlider
+          label="CPU"
+          value={form.cpu_percent}
+          min={25} max={400} step={25}
+          onChange={(v) => setForm({ ...form, cpu_percent: v })}
+          format={(v) => v >= 100 ? `${(v / 100).toFixed(v % 100 === 0 ? 0 : 1)} cores` : `${v}%`}
+        />
+        <PixelSlider
+          label="Disk"
+          value={form.disk_mb}
+          min={1024} max={102400} step={1024}
+          onChange={(v) => setForm({ ...form, disk_mb: v })}
+          format={(v) => v >= 1024 ? `${(v / 1024).toFixed(v % 1024 === 0 ? 0 : 1)} GB` : `${v} MB`}
+        />
         <div
           className="text-xs px-3 py-2 flex items-start gap-2"
           style={{ background: "rgba(232,201,58,0.1)", border: "2px solid rgba(232,201,58,0.3)" }}
