@@ -1,14 +1,16 @@
 import { createClient } from "@supabase/supabase-js";
+import ws from "ws";
 import { config } from "./config.js";
 
 /**
  * Service-role Supabase client. Bypasses RLS — the daemon is fully trusted.
  * Realtime is enabled by default.
+ *
+ * Node.js < 22 lacks native WebSocket — pass the `ws` package as transport.
  */
 export const supabase = createClient(config.supabaseUrl, config.supabaseServiceKey, {
   auth: { persistSession: false, autoRefreshToken: false },
-  realtime: { params: { eventsPerSecond: 20 } },
-  // MCloud objects live in their own schema (other apps share this Supabase
-  // project). All .from() and .rpc() calls auto-resolve to mcloud.*.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  realtime: { params: { eventsPerSecond: 20 }, transport: ws as any },
   db: { schema: "public" },
 });
