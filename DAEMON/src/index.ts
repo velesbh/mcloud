@@ -18,24 +18,25 @@ import { startHibernationCron } from "./hibernation.js";
  * If it doesn't exist yet, create it with all details from env/auto-detect.
  */
 async function registerNode() {
+  const payload: Record<string, unknown> = {
+    id: config.nodeId,
+    name: config.nodeName,
+    fqdn: config.nodeFqdn,
+    ip: config.nodeIp,
+    total_ram_mb: config.nodeTotalRamMb,
+    total_cpu: config.nodeTotalCpu,
+    total_disk_mb: config.nodeTotalDiskMb,
+    overallocation_percent: config.nodeOverallocationPercent,
+    status: "online",
+    last_seen_at: new Date().toISOString(),
+  };
+  // Only set region_id when explicitly configured — don't overwrite
+  // an admin-assigned region on daemon restart.
+  if (config.nodeRegionId) payload.region_id = config.nodeRegionId;
+
   const { error } = await supabase
     .from("nodes")
-    .upsert(
-      {
-        id: config.nodeId,
-        name: config.nodeName,
-        fqdn: config.nodeFqdn,
-        ip: config.nodeIp,
-        region_id: config.nodeRegionId,
-        total_ram_mb: config.nodeTotalRamMb,
-        total_cpu: config.nodeTotalCpu,
-        total_disk_mb: config.nodeTotalDiskMb,
-        overallocation_percent: config.nodeOverallocationPercent,
-        status: "online",
-        last_seen_at: new Date().toISOString(),
-      },
-      { onConflict: "id" }
-    );
+    .upsert(payload, { onConflict: "id" });
   if (error) {
     log.error("registerNode failed", { error });
     process.exit(1);
