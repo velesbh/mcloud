@@ -22,9 +22,18 @@ export default function RegionsPage() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ name: "", slug: "", description: "", flag_emoji: "🌐" });
 
-  const { data: regions = [], isLoading } = useQuery<Region[]>({
+  const { data: regions = [], isLoading, error } = useQuery<Region[]>({
     queryKey: ["regions"],
-    queryFn: () => fetch("/api/regions").then((r) => r.json()),
+    queryFn: async () => {
+      const res = await fetch("/api/regions");
+      const data = await res.json();
+      // If API returns an error object instead of array, return empty array
+      if (data.error || !Array.isArray(data)) {
+        console.error("Regions API error:", data);
+        return [];
+      }
+      return data;
+    },
   });
 
   async function createRegion() {
@@ -87,6 +96,20 @@ export default function RegionsPage() {
   }
 
   if (isLoading) return <PageLoader />;
+
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <PageHeader title="Regions" description="Geographic groupings of server nodes." />
+        <div className="rounded-lg border border-destructive bg-destructive/10 p-4">
+          <p className="text-sm text-destructive font-medium">Database Error</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            The Supabase migration hasn't been run yet. Run: <code className="bg-black/20 px-2 py-1 rounded">supabase db push --linked</code>
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
