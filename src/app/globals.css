@@ -323,3 +323,32 @@ button {
 button:active:not([disabled]) {
   transform: translateY(1px);
 }
+
+/* GLOBAL ROUNDED-EDGE NUKE — every Tailwind rounded utility forced to 0,
+   except `rounded-full` (kept for truly circular things: avatars,
+   status dots, indicators). */
+.rounded,
+.rounded-sm,
+.rounded-md,
+.rounded-lg,
+.rounded-xl,
+.rounded-2xl,
+.rounded-3xl,
+.rounded-t,
+.rounded-b,
+.rounded-l,
+.rounded-r,
+.rounded-t-sm,
+.rounded-t-md,
+.rounded-t-lg,
+.rounded-b-sm,
+.rounded-b-md,
+.rounded-b-lg,
+.rounded-tl-sm,
+.rounded-tl-md,
+.rounded-tl-lg,
+.rounded-tr-sm,
+.rounded-tr-md,
+.rounded-tr-lg {
+  border-radius: 0 !important;
+}

@@ -131,50 +131,41 @@ export default function ModsPage({ params }: { params: Promise<{ id: string }> }
       )}
 
       <Tabs defaultValue="browse">
-        <div className="flex items-center gap-3 flex-wrap">
-          <TabsList>
-            <TabsTrigger value="browse">Browse</TabsTrigger>
-            <TabsTrigger value="installed">Installed ({installed.length})</TabsTrigger>
-          </TabsList>
+        <TabsList>
+          <TabsTrigger value="browse">Browse</TabsTrigger>
+          <TabsTrigger value="installed">Installed ({installed.length})</TabsTrigger>
+        </TabsList>
 
-          <div className="flex items-center gap-2 ml-auto flex-wrap">
-            {/* Content type selector */}
+        <TabsContent value="browse" className="mt-4 space-y-3">
+          {/* Filters — only show on Browse tab */}
+          <div className="flex items-center gap-2 flex-wrap">
             <Select value={type} onValueChange={setType}>
-              <SelectTrigger className="w-32 h-9">
-                <SelectValue />
-              </SelectTrigger>
+              <SelectTrigger className="w-32 h-9"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {MODRINTH_PROJECT_TYPES.map((t) => (
                   <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-
-            {/* MC version — seeded from server, user can override for compat */}
             <Select value={effectiveVersion} onValueChange={setVersion}>
-              <SelectTrigger className="w-32 h-9">
-                <SelectValue />
-              </SelectTrigger>
+              <SelectTrigger className="w-32 h-9"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {MC_JAVA_VERSIONS.map((v) => (
                   <SelectItem key={v} value={v}>{v}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={`Search Modrinth for ${serverLoader} mods...`}
+                className="pl-9 h-9"
+              />
+            </div>
           </div>
-        </div>
 
-        <div className="relative mt-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={`Search Modrinth for ${serverLoader} mods...`}
-            className="pl-9"
-          />
-        </div>
-
-        <TabsContent value="browse" className="mt-4">
           {loadingSearch ? (
             <PageLoader />
           ) : !searchResult?.hits?.length ? (

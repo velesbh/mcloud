@@ -7,6 +7,7 @@ import {
   Wifi, Clock, MapPin,
 } from "lucide-react";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import { StatusOverlay } from "@/components/server/StatusOverlay";
 import { UsageBar } from "@/components/shared/UsageBar";
 import { LoadingSpinner } from "@/components/shared/MinecraftLoader";
 import { PageLoader } from "@/components/shared/LoadingScreen";
@@ -40,6 +41,7 @@ export default function ServerOverviewPage({
   const [liveStatus, setLiveStatus] = useState<string | null>(null);
   const [liveRamMb, setLiveRamMb] = useState<number | null>(null);
   const [liveCpuPct, setLiveCpuPct] = useState<number | null>(null);
+  const [installing, setInstalling] = useState(false);
 
   const { data: server, isLoading } = useQuery({
     queryKey: ["server", id],
@@ -65,6 +67,15 @@ export default function ServerOverviewPage({
       .on("broadcast", { event: "metrics" }, (msg) => {
         setLiveRamMb(msg.payload?.ramMb ?? null);
         setLiveCpuPct(msg.payload?.cpuPercent ?? null);
+      })
+      .on("broadcast", { event: "line" }, (msg) => {
+        // Detect modpack installer activity from console output
+        const line = String(msg.payload?.line ?? "");
+        if (line.startsWith("[modpack]") && !line.includes("complete")) {
+          setInstalling(true);
+        } else if (line.includes("[modpack] Install complete") || line.includes("Done (")) {
+          setInstalling(false);
+        }
       })
       .subscribe();
     return () => { void supabase.removeChannel(ch); };
@@ -207,6 +218,18 @@ export default function ServerOverviewPage({
           )}
         </div>
       </PixelPanel>
+
+      {/* Pixel-art animation overlay during transitions */}
+      {(installing || isTransitioning) && (
+        <PixelPanel variant="dark" className="p-2">
+          <StatusOverlay
+            status={
+              installing ? "installing" :
+              (currentStatus as "starting" | "stopping" | "restarting")
+            }
+          />
+        </PixelPanel>
+      )}
 
       {/* Live status row: players + ping + uptime */}
       <div className="grid gap-4 md:grid-cols-3">

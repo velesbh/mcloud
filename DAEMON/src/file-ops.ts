@@ -55,6 +55,9 @@ async function emit(serverId: string, opId: string, event: string, payload: obje
 
 async function listDir(serverId: string, opId: string, relPath: string) {
   const abs = resolveServerPath(serverId, relPath);
+  // Server dir may not exist yet (server never started) — auto-create the root
+  // so the file manager works immediately after server creation.
+  await mkdir(abs, { recursive: true });
   const entries = await readdir(abs, { withFileTypes: true });
   const items = await Promise.all(
     entries.map(async (e) => {

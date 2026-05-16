@@ -1,7 +1,7 @@
 "use client";
-import { use, useState } from "react";
+import { use, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Globe, Download, Link2, Trash2, Check, Pencil } from "lucide-react";
+import { Globe, Download, Link2, Trash2, Check, Pencil, Upload } from "lucide-react";
 import { PixelPanel, PixelButton } from "@/components/pixel/PixelPanel";
 import { GrassBlock } from "@/components/pixel/Block";
 import { LoadingSpinner } from "@/components/shared/MinecraftLoader";
@@ -40,6 +40,7 @@ export default function WorldsPage({ params }: { params: Promise<{ id: string }>
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<World | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data, isLoading, refetch } = useQuery<{ worlds: World[]; active: string }>({
     queryKey: ["worlds", id],
@@ -103,13 +104,57 @@ export default function WorldsPage({ params }: { params: Promise<{ id: string }>
     } catch (e) { toast.error((e as Error).message); }
   }
 
+  async function uploadWorld(files: FileList | null) {
+    if (!files?.length) return;
+    const file = files[0];
+    if (!file.name.toLowerCase().endsWith(".zip")) {
+      toast.error("Only .zip files are supported");
+      return;
+    }
+    setBusy(`Uploading ${file.name}...`);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`/api/servers/${id}/worlds/upload`, { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Upload failed");
+      toast.success(`Imported as "${data.worldName}"`);
+      await refetch();
+    } catch (e) { toast.error((e as Error).message); }
+    finally {
+      setBusy(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
   if (isLoading) return (
     <div className="flex justify-center py-20"><LoadingSpinner size={28} /></div>
   );
 
   return (
-    <div className="space-y-4">
-      <PixelPanel variant="dark" className="p-4">
+    <div
+      className="space-y-4 relative min-h-[calc(100vh-220px)] p-1"
+      style={{
+        // Minecraft map item as backdrop — stretched, dimmed, pixelated
+        backgroundImage: `url("https://ccvaults.com/assets/75.$%20GUI/map_background.png")`,
+        backgroundSize: "100% 100%",
+        backgroundRepeat: "no-repeat",
+        backgroundPosition: "center",
+        imageRendering: "pixelated",
+        backgroundColor: "rgba(0,0,0,0.5)",
+        backgroundBlendMode: "multiply",
+      }}
+    >
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".zip"
+        className="hidden"
+        onChange={(e) => uploadWorld(e.target.files)}
+      />
+
+      <PixelPanel variant="dark" className="p-4 backdrop-blur-sm">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <GrassBlock size={36} />
@@ -121,10 +166,16 @@ export default function WorldsPage({ params }: { params: Promise<{ id: string }>
               </p>
             </div>
           </div>
-          <PixelButton variant="green" onClick={() => setImportOpen(true)}>
-            <Link2 className="w-3.5 h-3.5" />
-            Import from URL
-          </PixelButton>
+          <div className="flex flex-wrap items-center gap-2">
+            <PixelButton variant="green" onClick={() => fileInputRef.current?.click()}>
+              <Upload className="w-3.5 h-3.5" />
+              Upload .zip
+            </PixelButton>
+            <PixelButton onClick={() => setImportOpen(true)}>
+              <Link2 className="w-3.5 h-3.5" />
+              From URL
+            </PixelButton>
+          </div>
         </div>
         {busy && (
           <div className="mt-3 flex items-center gap-2 text-xs text-amber-400 font-minecraft">

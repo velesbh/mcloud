@@ -146,9 +146,11 @@ export async function startServer(serverId: string) {
     return;
   }
 
+  // FK hint required — two FK paths exist between servers↔allocations.
+  // Use the column-name hint (!allocation_id) which references the FK on the servers side.
   const { data: srv, error } = await supabase
     .from("servers")
-    .select("id, name, edition, game_version, loader, ram_mb, max_players, motd, allocation_id, modpack_url, modpack_installed, allocations(local_ip, port)")
+    .select("id, name, edition, game_version, loader, ram_mb, max_players, motd, allocation_id, modpack_url, modpack_installed, allocations!allocation_id(local_ip, port)")
     .eq("id", serverId)
     .single();
 

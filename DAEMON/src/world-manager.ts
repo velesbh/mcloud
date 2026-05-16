@@ -116,6 +116,48 @@ export async function renameWorld(serverId: string, oldName: string, newName: st
 }
 
 /**
+ * Import a world from a pre-uploaded Supabase Storage object (used by the
+ * "Upload world" flow: client uploads .zip → Storage → daemon extracts).
+ */
+export async function importWorldFromStorage(
+  serverId: string,
+  storageKey: string,
+  desiredName?: string
+): Promise<{ worldName: string }> {
+  const root = serverRoot(serverId);
+  await mkdir(root, { recursive: true });
+
+  const { data, error } = await supabase.storage.from(STORAGE_BUCKET).download(storageKey);
+  if (error || !data) throw new Error(`storage download: ${error?.message ?? "no data"}`);
+
+  const tmpZip = path.join(root, `.import-${Date.now()}.zip`);
+  await writeFile(tmpZip, Buffer.from(await data.arrayBuffer()));
+
+  const staging = path.join(root, `.staging-${Date.now()}`);
+  await mkdir(staging, { recursive: true });
+  new AdmZip(tmpZip).extractAllTo(staging, true);
+
+  const stagedItems = await readdir(staging, { withFileTypes: true });
+  const isSingleRoot = stagedItems.length === 1 && stagedItems[0].isDirectory();
+  const sourceDir = isSingleRoot ? path.join(staging, stagedItems[0].name) : staging;
+
+  let worldName = desiredName
+    ?? (isSingleRoot ? stagedItems[0].name : storageKey.split("/").pop()?.replace(/\.zip$/i, "") ?? "imported");
+  worldName = worldName.replace(/[^\w\-]/g, "_");
+  let dest = path.join(root, worldName);
+  let counter = 1;
+  while (await stat(dest).then(() => true).catch(() => false)) {
+    dest = path.join(root, `${worldName}-${counter++}`);
+  }
+  await rename(sourceDir, dest);
+  await rm(staging, { recursive: true, force: true });
+  await rm(tmpZip, { force: true });
+  void supabase.storage.from(STORAGE_BUCKET).remove([storageKey]);
+
+  return { worldName: path.basename(dest) };
+}
+
+/**
  * Download a .zip from a URL, extract it, and treat it as a new world.
  * If the zip contains a single root folder, use that as the world name;
  * otherwise create one based on the URL filename.
@@ -234,6 +276,11 @@ export async function handleWorldOp(req: WorldOpRequest) {
         break;
       case "import-url": {
         const data = await importWorldFromUrl(serverId, req.url as string, req.name as string | undefined);
+        await reply(serverId, opId, "import-result", data);
+        break;
+      }
+      case "import": {
+        const data = await importWorldFromStorage(serverId, req.storageKey as string, req.name as string | undefined);
         await reply(serverId, opId, "import-result", data);
         break;
       }
