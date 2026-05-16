@@ -28,9 +28,9 @@ export default async function AdminLayout({
       <div className="hidden lg:flex">
         <AdminSidebar />
       </div>
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden surface">
         <Topbar />
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">{children}</main>
+        <main className="flex-1 overflow-y-auto px-4 lg:px-8 py-6 lg:py-8 max-w-7xl w-full mx-auto">{children}</main>
       </div>
     </div>
   );

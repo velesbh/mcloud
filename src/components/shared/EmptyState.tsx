@@ -10,7 +10,7 @@ function CreeperFace({ size = 64 }: { size?: number }) {
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden
     >
-      <rect width="64" height="64" fill="#3d7a3d" rx="4" />
+      <rect width="64" height="64" fill="#3d7a3d" rx="6" />
       {/* Eyes */}
       <rect x="14" y="18" width="10" height="10" fill="#1a1a1a" />
       <rect x="40" y="18" width="10" height="10" fill="#1a1a1a" />
@@ -37,18 +37,20 @@ export function EmptyState({ icon, title, description, action, className }: Empt
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center gap-4 py-16 px-4 text-center",
+        "relative flex flex-col items-center justify-center gap-5 py-20 px-6 text-center rounded-2xl border border-border bg-card/50 bg-pixel-grid",
         className
       )}
     >
-      {icon ?? <CreeperFace size={56} />}
-      <div className="space-y-1">
-        <h3 className="text-lg font-semibold text-foreground">{title}</h3>
+      <div className="flex items-center justify-center w-20 h-20 rounded-2xl bg-background elev-1">
+        {icon ?? <CreeperFace size={56} />}
+      </div>
+      <div className="space-y-1.5 max-w-sm">
+        <h3 className="text-xl font-semibold text-foreground">{title}</h3>
         {description && (
-          <p className="text-sm text-muted-foreground max-w-sm">{description}</p>
+          <p className="text-sm text-muted-foreground leading-relaxed">{description}</p>
         )}
       </div>
-      {action && <div className="mt-2">{action}</div>}
+      {action && <div className="mt-1">{action}</div>}
     </div>
   );
 }

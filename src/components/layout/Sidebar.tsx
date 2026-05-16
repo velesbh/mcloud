@@ -22,7 +22,7 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { key: "dashboard", href: "/dashboard", Icon: GrassBlock,  exact: true },
+  { key: "dashboard", href: "/dashboard", Icon: GrassBlock, exact: true },
   { key: "servers",   href: "/servers",   Icon: ServerBlock },
   { key: "upgrade",   href: "/upgrade",   Icon: StarIcon },
   { key: "account",   href: "/account",   Icon: UserHead },
@@ -34,10 +34,10 @@ interface SidebarProps {
 
 export function Sidebar({ onClose }: SidebarProps) {
   const pathname = usePathname();
-  const locale   = useLocale();
-  const t        = useTranslations("nav");
-  const isAdmin  = useAdmin();
-  const base     = `/${locale}`;
+  const locale = useLocale();
+  const t = useTranslations("nav");
+  const isAdmin = useAdmin();
+  const base = `/${locale}`;
 
   function isActive(href: string, exact?: boolean) {
     const full = `${base}${href}`;
@@ -46,29 +46,15 @@ export function Sidebar({ onClose }: SidebarProps) {
   }
 
   return (
-    <aside
-      className="w-60 flex flex-col h-full"
-      style={{
-        background: "hsl(var(--sidebar-background))",
-        borderRight: "2px solid hsl(var(--sidebar-border))",
-      }}
-    >
-      {/* Header — dirt strip */}
-      <div
-        className="h-14 flex items-center px-4 gap-2.5 border-b-2"
-        style={{
-          borderColor: "hsl(var(--sidebar-border))",
-          background:
-            "linear-gradient(to bottom, #5a9a2e 0%, #5a9a2e 18%, #3e6a18 24%, #866043 24%, #7a5538 100%)",
-          boxShadow: "inset 0 -3px 0 rgba(0,0,0,0.3)",
-        }}
-      >
-        <MCloudLogo size={26} />
-        <MCloudWordmark className="text-white [&>span]:text-[#a8e060]" />
+    <aside className="w-64 flex flex-col h-full bg-[hsl(var(--sidebar-background))] border-r border-[hsl(var(--sidebar-border))]">
+      {/* Brand */}
+      <div className="h-16 flex items-center px-5 gap-3">
+        <MCloudLogo size={28} />
+        <MCloudWordmark />
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 py-3 px-2 space-y-1 overflow-y-auto">
+      <nav className="flex-1 px-3 pt-2 pb-4 space-y-0.5 overflow-y-auto">
         {navItems.map((item) => {
           const active = isActive(item.href, item.exact);
           return (
@@ -77,72 +63,49 @@ export function Sidebar({ onClose }: SidebarProps) {
               href={`${base}${item.href}`}
               onClick={onClose}
               className={cn(
-                "flex items-center gap-2.5 px-3 py-2.5 text-sm transition-colors select-none",
+                "group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium select-none transition-all",
                 active
-                  ? "text-white font-semibold"
-                  : "text-[hsl(var(--sidebar-foreground))] hover:text-foreground"
+                  ? "bg-primary/12 text-primary"
+                  : "text-[hsl(var(--sidebar-foreground))] hover:bg-foreground/5"
               )}
-              style={
-                active
-                  ? {
-                      background: "#5a9a2e",
-                      boxShadow:
-                        "inset -2px -3px 0 rgba(0,0,0,0.4), inset 2px 2px 0 rgba(255,255,255,0.15)",
-                      borderRadius: 0,
-                    }
-                  : { borderRadius: 0 }
-              }
             >
-              <item.Icon size={18} />
-              <span className="font-minecraft text-[10px]">{t(item.key)}</span>
+              {active && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-r-full bg-primary" />
+              )}
+              <item.Icon size={20} />
+              <span>{t(item.key)}</span>
             </Link>
           );
         })}
 
         {isAdmin && (
           <>
-            <div className="pt-4 pb-1 px-2">
-              <div className="h-px w-full" style={{ background: "hsl(var(--sidebar-border))" }} />
-              <span
-                className="block mt-2 font-minecraft text-[8px] px-1 uppercase tracking-wider"
-                style={{ color: "#9a7055" }}
-              >
-                ▸ admin
-              </span>
+            <div className="pt-5 pb-1 px-3">
+              <p className="text-pixel text-muted-foreground/70 uppercase">Admin</p>
             </div>
             <Link
               href={`${base}/admin`}
               onClick={onClose}
               className={cn(
-                "flex items-center gap-2.5 px-3 py-2.5 text-sm transition-colors",
+                "group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all",
                 pathname.startsWith(`${base}/admin`)
-                  ? "text-white font-semibold"
-                  : "text-[hsl(var(--sidebar-foreground))] hover:text-foreground"
+                  ? "bg-primary/12 text-primary"
+                  : "text-[hsl(var(--sidebar-foreground))] hover:bg-foreground/5"
               )}
-              style={
-                pathname.startsWith(`${base}/admin`)
-                  ? {
-                      background: "#7a5538",
-                      boxShadow:
-                        "inset -2px -3px 0 rgba(0,0,0,0.4), inset 2px 2px 0 rgba(255,255,255,0.08)",
-                      borderRadius: 0,
-                    }
-                  : { borderRadius: 0 }
-              }
             >
-              <ShieldIcon size={18} />
-              <span className="font-minecraft text-[10px]">{t("admin")}</span>
+              {pathname.startsWith(`${base}/admin`) && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-r-full bg-primary" />
+              )}
+              <ShieldIcon size={20} />
+              <span>{t("admin")}</span>
             </Link>
           </>
         )}
       </nav>
 
       {/* Footer */}
-      <div
-        className="px-3 py-3 border-t-2 flex items-center justify-center gap-2"
-        style={{ borderColor: "hsl(var(--sidebar-border))" }}
-      >
-        <p className="font-minecraft text-[8px] text-muted-foreground">© 2026 Enzonic</p>
+      <div className="px-5 py-4 border-t border-[hsl(var(--sidebar-border))]">
+        <p className="text-pixel text-muted-foreground/60">© 2026 Enzonic</p>
       </div>
     </aside>
   );

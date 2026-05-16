@@ -1,4 +1,4 @@
-import { cn, getStatusDotColor } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { SERVER_STATUS_LABELS } from "@/lib/constants";
 
 interface StatusBadgeProps {
@@ -7,36 +7,38 @@ interface StatusBadgeProps {
   showDot?: boolean;
 }
 
-const STYLES: Record<string, string> = {
-  running:    "bg-green-500/10 text-green-400 border-green-500/40",
-  starting:   "bg-yellow-500/10 text-yellow-400 border-yellow-500/40",
-  restarting: "bg-yellow-500/10 text-yellow-400 border-yellow-500/40",
-  stopping:   "bg-yellow-500/10 text-yellow-400 border-yellow-500/40",
-  offline:    "bg-zinc-500/10 text-zinc-400 border-zinc-500/40",
-  error:      "bg-red-500/10 text-red-400 border-red-500/40",
-  suspended:  "bg-orange-500/10 text-orange-400 border-orange-500/40",
-  creating:   "bg-blue-500/10 text-blue-400 border-blue-500/40",
-  hibernated: "bg-amber-700/15 text-amber-300 border-amber-700/40",
+// Refined modern pill colors (used both dot + bg/text)
+const STYLES: Record<string, { wrap: string; dot: string; pulse: boolean }> = {
+  running:    { wrap: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 ring-emerald-500/20", dot: "bg-emerald-500", pulse: false },
+  starting:   { wrap: "bg-amber-500/10  text-amber-600  dark:text-amber-400  ring-amber-500/20",  dot: "bg-amber-500",  pulse: true  },
+  restarting: { wrap: "bg-amber-500/10  text-amber-600  dark:text-amber-400  ring-amber-500/20",  dot: "bg-amber-500",  pulse: true  },
+  stopping:   { wrap: "bg-amber-500/10  text-amber-600  dark:text-amber-400  ring-amber-500/20",  dot: "bg-amber-500",  pulse: true  },
+  offline:    { wrap: "bg-zinc-500/10   text-zinc-600   dark:text-zinc-400   ring-zinc-500/20",   dot: "bg-zinc-400",   pulse: false },
+  error:      { wrap: "bg-red-500/10    text-red-600    dark:text-red-400    ring-red-500/20",    dot: "bg-red-500",    pulse: false },
+  suspended:  { wrap: "bg-orange-500/10 text-orange-600 dark:text-orange-400 ring-orange-500/20", dot: "bg-orange-500", pulse: false },
+  creating:   { wrap: "bg-sky-500/10    text-sky-600    dark:text-sky-400    ring-sky-500/20",    dot: "bg-sky-500",    pulse: true  },
+  hibernated: { wrap: "bg-violet-500/10 text-violet-600 dark:text-violet-400 ring-violet-500/20", dot: "bg-violet-500", pulse: false },
 };
 
 export function StatusBadge({ status, className, showDot = true }: StatusBadgeProps) {
-  const dotColor = getStatusDotColor(status);
+  const s = STYLES[status] ?? STYLES.offline;
   const label = SERVER_STATUS_LABELS[status] ?? status;
-  const isAnimated = status === "starting" || status === "stopping" || status === "restarting";
 
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 font-minecraft text-[9px] px-2 py-1 border",
-        STYLES[status] ?? "bg-zinc-500/10 text-zinc-400 border-zinc-500/40",
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset",
+        s.wrap,
         className
       )}
-      style={{ borderRadius: 0 }}
     >
       {showDot && (
-        <span
-          className={cn("w-1.5 h-1.5 shrink-0", dotColor, isAnimated && "animate-pulse")}
-        />
+        <span className="relative flex h-1.5 w-1.5 shrink-0">
+          {s.pulse && (
+            <span className={cn("absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping", s.dot)} />
+          )}
+          <span className={cn("relative inline-flex h-1.5 w-1.5 rounded-full", s.dot)} />
+        </span>
       )}
       {label}
     </span>

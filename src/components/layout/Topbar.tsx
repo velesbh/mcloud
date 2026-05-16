@@ -17,34 +17,34 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
   const locale = useLocale();
 
   return (
-    <header className="h-14 border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-40 flex items-center px-4 gap-3">
+    <header className="h-16 sticky top-0 z-40 glass border-b border-border/60 flex items-center px-5 gap-3">
       {onToggleSidebar && (
         <Button
           variant="ghost"
           size="icon"
-          className="h-9 w-9 lg:hidden"
+          className="h-10 w-10 rounded-full lg:hidden"
           onClick={onToggleSidebar}
         >
           <PanelLeft className="w-4 h-4" />
         </Button>
       )}
 
-      <Link href={`/${locale}`} className="flex items-center gap-2 mr-4">
-        <MCloudLogo size={28} />
+      <Link href={`/${locale}`} className="flex items-center gap-2.5 lg:hidden">
+        <MCloudLogo size={26} />
         <MCloudWordmark />
       </Link>
 
       <div className="flex-1" />
 
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2">
         <PlanBadge />
         <LocaleSwitcher />
         <ThemeToggle />
-        <div className="ml-1">
+        <div className="ml-1 pl-2 border-l border-border/60">
           <UserButton
             appearance={{
               elements: {
-                avatarBox: "w-8 h-8",
+                avatarBox: "w-8 h-8 rounded-full",
               },
             }}
           />

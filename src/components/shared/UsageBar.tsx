@@ -1,5 +1,4 @@
 import { cn, formatMb } from "@/lib/utils";
-import { Progress } from "@/components/ui/progress";
 
 interface UsageBarProps {
   label: string;
@@ -28,23 +27,21 @@ export function UsageBar({
   };
 
   const barColor =
-    percent > 90
-      ? "bg-red-500"
-      : percent > 70
-      ? "bg-yellow-500"
-      : "bg-green-500";
+    percent > 90 ? "bg-red-500"
+    : percent > 70 ? "bg-amber-500"
+    : "bg-primary";
 
   return (
     <div className={cn("space-y-1.5", className)}>
-      <div className="flex justify-between items-center text-xs text-muted-foreground">
-        <span className="font-medium">{label}</span>
-        <span>
-          {fmt(used)} / {fmt(total)}
+      <div className="flex justify-between items-center text-xs">
+        <span className="font-medium text-foreground/80">{label}</span>
+        <span className="tabular-nums text-muted-foreground">
+          {fmt(used)} <span className="text-muted-foreground/60">/ {fmt(total)}</span>
         </span>
       </div>
-      <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+      <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
         <div
-          className={cn("h-full rounded-full transition-all duration-500", barColor)}
+          className={cn("h-full rounded-full transition-all duration-700 ease-out", barColor)}
           style={{ width: `${percent}%` }}
         />
       </div>
