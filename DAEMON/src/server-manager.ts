@@ -147,7 +147,7 @@ export async function startServer(serverId: string) {
 
   const { data: srv, error } = await supabase
     .from("servers")
-    .select("id, name, edition, game_version, loader, ram_mb, max_players, motd")
+    .select("id, name, edition, game_version, loader, ram_mb, max_players, motd, allocation_id, allocations(local_ip, port)")
     .eq("id", serverId)
     .single();
 
@@ -162,14 +162,24 @@ export async function startServer(serverId: string) {
   const dir = await ensureServerDir(serverId);
   await ensureEula(dir);
 
+  // Resolve bind address + port from allocation (fall back to 0.0.0.0:25565)
+  const alloc = Array.isArray(srv.allocations)
+    ? srv.allocations[0]
+    : srv.allocations as { local_ip?: string; port?: number } | null;
+  const bindIp   = alloc?.local_ip ?? "0.0.0.0";
+  const bindPort = alloc?.port ?? 25565;
+
   // Write server.properties
   const props = [
     `motd=${srv.motd ?? srv.name}`,
     `max-players=${srv.max_players ?? 20}`,
+    `server-ip=${bindIp}`,
+    `server-port=${bindPort}`,
     `online-mode=true`,
     `enable-rcon=false`,
   ].join("\n");
   await writeFile(path.join(dir, "server.properties"), props, "utf8");
+  log.info("server.properties written", { serverId, bindIp, bindPort });
 
   let cmd: string;
   let args: string[];

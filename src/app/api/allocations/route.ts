@@ -27,11 +27,16 @@ export async function POST(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!(await isAdmin())) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const body = await req.json();
+  const { node_id, ip, port, local_ip } = await req.json();
   const supabase = createAdminSupabaseClient();
   const { data, error } = await supabase
     .from("allocations")
-    .insert(body as Database["mcloud"]["Tables"]["allocations"]["Insert"])
+    .insert({
+      node_id,
+      ip,
+      port,
+      local_ip: local_ip || "0.0.0.0",
+    } as Database["mcloud"]["Tables"]["allocations"]["Insert"])
     .select()
     .single();
 

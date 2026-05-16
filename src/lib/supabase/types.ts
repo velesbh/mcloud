@@ -52,6 +52,8 @@ export interface Database {
           max_servers: number;
           max_ram_mb: number;
           max_disk_mb: number;
+          max_cpu_percent: number;
+          max_allocations: number;
           created_at: string;
           updated_at: string;
         };
@@ -66,6 +68,8 @@ export interface Database {
           max_servers?: number;
           max_ram_mb?: number;
           max_disk_mb?: number;
+          max_cpu_percent?: number;
+          max_allocations?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -80,6 +84,8 @@ export interface Database {
           max_servers?: number;
           max_ram_mb?: number;
           max_disk_mb?: number;
+          max_cpu_percent?: number;
+          max_allocations?: number;
           updated_at?: string;
         };
         Relationships: [];
@@ -174,6 +180,7 @@ export interface Database {
           id: string;
           node_id: string;
           ip: string;
+          local_ip: string;
           port: number;
           server_id: string | null;
           assigned_at: string | null;
@@ -183,6 +190,7 @@ export interface Database {
           id?: string;
           node_id: string;
           ip: string;
+          local_ip?: string;
           port: number;
           server_id?: string | null;
           assigned_at?: string | null;

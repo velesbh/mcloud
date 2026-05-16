@@ -95,48 +95,21 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Pick a free allocation from the chosen node — auto-create if none exist
-  let allocation: { id: string; ip: string; port: number } | null = null;
-
-  const { data: existingAlloc } = await adminSupabase
+  // Pick a free allocation from the chosen node — admin must add them manually
+  const { data: allocation } = await adminSupabase
     .from("allocations")
-    .select("id, ip, port")
+    .select("id, ip, local_ip, port")
     .eq("node_id", pickedNodeId)
     .is("server_id", null)
     .order("port", { ascending: true })
     .limit(1)
     .maybeSingle();
 
-  if (existingAlloc) {
-    allocation = existingAlloc;
-  } else {
-    // No allocations configured — auto-create one using the node's registered IP
-    const { data: node } = await adminSupabase
-      .from("nodes")
-      .select("ip")
-      .eq("id", pickedNodeId)
-      .single();
-
-    if (node?.ip) {
-      // Find the highest port already allocated on this node (across any server)
-      const { data: maxRow } = await adminSupabase
-        .from("allocations")
-        .select("port")
-        .eq("node_id", pickedNodeId)
-        .order("port", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      const nextPort = (maxRow?.port ?? 25564) + 1;
-
-      const { data: created } = await adminSupabase
-        .from("allocations")
-        .insert({ node_id: pickedNodeId, ip: node.ip, port: nextPort })
-        .select("id, ip, port")
-        .single();
-
-      allocation = created ?? null;
-    }
+  if (!allocation) {
+    return NextResponse.json(
+      { error: "noAllocations", message: "No free IP:port allocations available on this node. Ask your admin to add allocations in the admin panel." },
+      { status: 503 }
+    );
   }
 
   const { data: server, error } = await adminSupabase
