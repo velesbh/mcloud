@@ -55,8 +55,14 @@ export default function UpgradePage() {
         __internal_openCheckout?: (props: { planId: string; planPeriod?: "month" | "annual"; onSubscriptionComplete?: () => void }) => void;
       };
       if (typeof c.__internal_openCheckout === "function") {
+        const clerkPlanId = plan.clerk_plan_id ?? plan.plan_key;
+        if (!plan.clerk_plan_id) {
+          toast.error("This plan has no Clerk Plan ID set. Ask your admin to configure it in the Billing Plans page.");
+          setPendingPlan(null);
+          return;
+        }
         c.__internal_openCheckout({
-          planId: plan.plan_key,
+          planId: clerkPlanId,
           planPeriod: "month",
           onSubscriptionComplete: () => {
             toast.success(`Subscribed to ${plan.name}`);

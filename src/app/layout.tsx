@@ -22,7 +22,13 @@ export const metadata: Metadata = {
   title: "MCloud — Minecraft Hosting by Enzonic",
   description:
     "Host Minecraft servers effortlessly. Create, manage, and share your server in seconds.",
-  icons: { icon: "/favicon.ico" },
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "any" },
+    ],
+    apple: "/icon.svg",
+  },
 };
 
 export default function RootLayout({

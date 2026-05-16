@@ -424,6 +424,7 @@ export interface Database {
         Row: {
           id: string;
           plan_key: string;
+          clerk_plan_id: string | null;
           name: string;
           description: string | null;
           monthly_price_usd: number | null;
@@ -441,6 +442,7 @@ export interface Database {
         Insert: {
           id?: string;
           plan_key: string;
+          clerk_plan_id?: string | null;
           name: string;
           description?: string | null;
           monthly_price_usd?: number | null;
@@ -458,6 +460,7 @@ export interface Database {
         Update: {
           id?: string;
           plan_key?: string;
+          clerk_plan_id?: string | null;
           name?: string;
           description?: string | null;
           monthly_price_usd?: number | null;

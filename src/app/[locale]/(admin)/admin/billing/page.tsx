@@ -27,6 +27,7 @@ import type { BillingPlan } from "@/lib/supabase/types";
 type FormState = {
   id?: string;
   plan_key: string;
+  clerk_plan_id: string;
   name: string;
   description: string;
   monthly_price_usd: string;
@@ -42,6 +43,7 @@ type FormState = {
 
 const empty: FormState = {
   plan_key: "",
+  clerk_plan_id: "",
   name: "",
   description: "",
   monthly_price_usd: "",
@@ -62,6 +64,7 @@ function planToForm(p: BillingPlan): FormState {
   return {
     id: p.id,
     plan_key: p.plan_key,
+    clerk_plan_id: p.clerk_plan_id ?? "",
     name: p.name,
     description: p.description ?? "",
     monthly_price_usd: p.monthly_price_usd?.toString() ?? "",
@@ -97,6 +100,7 @@ export default function AdminBillingPage() {
     try {
       const payload = {
         plan_key: editing.plan_key.trim(),
+        clerk_plan_id: editing.clerk_plan_id.trim() || null,
         name: editing.name.trim(),
         description: editing.description.trim() || null,
         monthly_price_usd: editing.monthly_price_usd
@@ -168,6 +172,7 @@ export default function AdminBillingPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Plan Key</TableHead>
+              <TableHead>Clerk Plan ID</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Price</TableHead>
               <TableHead>RAM</TableHead>
@@ -181,7 +186,7 @@ export default function AdminBillingPage() {
           <TableBody>
             {plans.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center text-muted-foreground py-12">
+                <TableCell colSpan={10} className="text-center text-muted-foreground py-12">
                   No plans yet. Add a plan to expose it on the user upgrade page.
                 </TableCell>
               </TableRow>
@@ -189,6 +194,9 @@ export default function AdminBillingPage() {
               plans.map((p) => (
                 <TableRow key={p.id}>
                   <TableCell className="font-mono text-xs">{p.plan_key}</TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">
+                    {p.clerk_plan_id ?? <span className="text-destructive/70">not set</span>}
+                  </TableCell>
                   <TableCell className="font-medium text-sm flex items-center gap-1">
                     {p.name}
                     {p.is_highlighted && <Star className="w-3 h-3 fill-primary text-primary" />}
@@ -260,6 +268,18 @@ export default function AdminBillingPage() {
                     onChange={(e) => setEditing({ ...editing, name: e.target.value })}
                   />
                 </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Clerk Plan ID <span className="text-muted-foreground">(from Clerk Dashboard → Billing → Plans)</span></Label>
+                <Input
+                  placeholder="cplan_2abc123…"
+                  value={editing.clerk_plan_id}
+                  onChange={(e) => setEditing({ ...editing, clerk_plan_id: e.target.value })}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Required for checkout. Copy the opaque ID from your Clerk Billing dashboard, not the slug.
+                </p>
               </div>
 
               <div className="space-y-1">

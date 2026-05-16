@@ -6,6 +6,7 @@ export const billingPlanSchema = z.object({
     .min(1, "Required")
     .max(64)
     .regex(/^[a-zA-Z0-9_:-]+$/, "Letters, numbers, _, -, : only"),
+  clerk_plan_id: z.string().max(255).optional().nullable(),
   name: z.string().min(1).max(64),
   description: z.string().max(500).optional().nullable(),
   monthly_price_usd: z.number().min(0).max(100000).optional().nullable(),

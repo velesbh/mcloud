@@ -27,6 +27,7 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
   const [form, setForm] = useState({
     name: "", motd: "", max_players: 20,
     game_version: "1.21.4", loader: "paper" as string,
+    ram_mb: 1024, cpu_percent: 100, disk_mb: 5120,
   });
 
   const { data: server, isLoading } = useQuery({
@@ -42,6 +43,9 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
         max_players: server.max_players ?? 20,
         game_version: server.game_version,
         loader: server.loader,
+        ram_mb: server.ram_mb ?? 1024,
+        cpu_percent: server.cpu_percent ?? 100,
+        disk_mb: server.disk_mb ?? 5120,
       });
     }
   }, [server]);
@@ -54,7 +58,10 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
     || (server.motd ?? "") !== form.motd
     || server.max_players !== form.max_players
     || server.game_version !== form.game_version
-    || server.loader !== form.loader;
+    || server.loader !== form.loader
+    || (server.ram_mb ?? 1024) !== form.ram_mb
+    || (server.cpu_percent ?? 100) !== form.cpu_percent
+    || (server.disk_mb ?? 5120) !== form.disk_mb;
 
   const versionChanged = server.game_version !== form.game_version;
   const loaderChanged = server.loader !== form.loader;
@@ -212,6 +219,54 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
             </p>
           </div>
         )}
+      </PixelPanel>
+
+      {/* Resources */}
+      <PixelPanel variant="stone" title="Resources" className="p-4 space-y-3">
+        <div className="grid sm:grid-cols-3 gap-3">
+          <div>
+            <label className="text-[10px] font-minecraft uppercase text-muted-foreground">RAM (MB)</label>
+            <input
+              type="number" min={512} max={32768} step={512}
+              value={form.ram_mb}
+              onChange={(e) => setForm({ ...form, ram_mb: parseInt(e.target.value) || 512 })}
+              className="mt-1 w-full px-3 py-2 text-sm font-mono bg-background border-2 border-border focus:border-primary outline-none"
+              style={{ borderRadius: 0 }}
+            />
+            <p className="text-[10px] text-muted-foreground mt-1">{(form.ram_mb / 1024).toFixed(1)} GB</p>
+          </div>
+          <div>
+            <label className="text-[10px] font-minecraft uppercase text-muted-foreground">CPU (%)</label>
+            <input
+              type="number" min={10} max={400} step={10}
+              value={form.cpu_percent}
+              onChange={(e) => setForm({ ...form, cpu_percent: parseInt(e.target.value) || 10 })}
+              className="mt-1 w-full px-3 py-2 text-sm font-mono bg-background border-2 border-border focus:border-primary outline-none"
+              style={{ borderRadius: 0 }}
+            />
+            <p className="text-[10px] text-muted-foreground mt-1">{form.cpu_percent >= 100 ? `${Math.floor(form.cpu_percent / 100)} core${form.cpu_percent >= 200 ? "s" : ""}` : `${form.cpu_percent}% of 1 core`}</p>
+          </div>
+          <div>
+            <label className="text-[10px] font-minecraft uppercase text-muted-foreground">Disk (MB)</label>
+            <input
+              type="number" min={1024} max={524288} step={1024}
+              value={form.disk_mb}
+              onChange={(e) => setForm({ ...form, disk_mb: parseInt(e.target.value) || 1024 })}
+              className="mt-1 w-full px-3 py-2 text-sm font-mono bg-background border-2 border-border focus:border-primary outline-none"
+              style={{ borderRadius: 0 }}
+            />
+            <p className="text-[10px] text-muted-foreground mt-1">{(form.disk_mb / 1024).toFixed(1)} GB</p>
+          </div>
+        </div>
+        <div
+          className="text-xs px-3 py-2 flex items-start gap-2"
+          style={{ background: "rgba(232,201,58,0.1)", border: "2px solid rgba(232,201,58,0.3)" }}
+        >
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+          <p className="text-muted-foreground">
+            Changes apply on next server start. Ensure your node has enough headroom.
+          </p>
+        </div>
       </PixelPanel>
 
       {/* Save bar */}

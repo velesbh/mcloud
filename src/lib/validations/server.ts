@@ -24,6 +24,7 @@ export const updateServerSchema = z.object({
   motd: z.string().max(64).optional(),
   max_players: z.number().int().min(1).max(1000).optional(),
   ram_mb: z.number().int().min(512).optional(),
+  disk_mb: z.number().int().min(1024).optional(),
   cpu_percent: z.number().int().min(10).max(400).optional(),
   java_flags: z.string().max(500).optional(),
   game_version: z.string().optional(),
