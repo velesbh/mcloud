@@ -54,6 +54,14 @@ async function spawnServer(
   isRetry = false
 ): Promise<void> {
   const proc = spawn(cmd, args, { cwd });
+  let markedRunning = false;
+
+  async function markRunning() {
+    if (markedRunning) return;
+    markedRunning = true;
+    await setStatus(serverId, "running");
+    await broadcastConsole(serverId, "> Server is online", "system");
+  }
 
   proc.stdout.on("data", (b: Buffer) => {
     const text = b.toString("utf8");
@@ -62,6 +70,10 @@ async function spawnServer(
       if (!trimmed) continue;
       void broadcastConsole(serverId, trimmed, "server");
       void persistConsoleLine(serverId, trimmed, "server");
+      // Paper/Vanilla/Fabric all log "Done (Xs)!" when the server is ready
+      if (!markedRunning && trimmed.includes("Done (") && trimmed.includes("For help")) {
+        void markRunning();
+      }
     }
   });
 
@@ -109,24 +121,16 @@ async function spawnServer(
   proc.on("spawn", () => {
     log.info("server spawned", { serverId, pid: proc.pid });
     procs.set(serverId, { serverId, proc, startedAt: new Date() });
-    // Give the JVM ~2 s to reach "Done" before marking running
-    setTimeout(async () => {
-      if (procs.has(serverId)) {
-        await setStatus(serverId, "running");
-        await broadcastConsole(serverId, "> Server is online", "system");
-      }
-    }, 2000);
   });
 
   proc.on("exit", async (code, signal) => {
     log.info("server exited", { serverId, code, signal });
     procs.delete(serverId);
-    // Only reset to offline when not already being retried
-    const cur = await supabase.from("servers").select("status").eq("id", serverId).single();
-    if (cur.data?.status !== "starting") {
-      await setStatus(serverId, "offline");
-      await broadcastConsole(serverId, `> Server stopped (code=${code ?? signal ?? "?"})`, "system");
-    }
+    // Always reset to offline — if the JVM crashed before the 2s "running" timer
+    // this is the only place that clears the "starting" state.
+    // (ENOENT is handled by the "error" event above, so no double-set.)
+    await setStatus(serverId, "offline");
+    await broadcastConsole(serverId, `> Server stopped (code=${code ?? signal ?? "?"})`, "system");
   });
 
   // Register immediately so the kill handler can find the proc
