@@ -35,21 +35,36 @@ export default function RegionsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
+      const data = await res.json();
       if (res.ok) {
         qc.invalidateQueries({ queryKey: ["regions"] });
         toast.success("Region created");
         setOpen(false);
         setForm({ name: "", slug: "", description: "", flag_emoji: "🌐" });
+      } else {
+        toast.error(data.error || "Failed to create region");
       }
+    } catch (err) {
+      toast.error("Network error");
     } finally {
       setSaving(false);
     }
   }
 
   async function deleteRegion(id: string) {
-    await fetch(`/api/regions/${id}`, { method: "DELETE" });
-    qc.invalidateQueries({ queryKey: ["regions"] });
-    toast.success("Region deleted");
+    try {
+      const res = await fetch(`/api/regions/${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (res.ok) {
+        qc.invalidateQueries({ queryKey: ["regions"] });
+        toast.success("Region deleted");
+        setDeleteTarget(null);
+      } else {
+        toast.error(data.error || "Failed to delete region");
+      }
+    } catch (err) {
+      toast.error("Network error");
+    }
   }
 
   if (isLoading) return <PageLoader />;

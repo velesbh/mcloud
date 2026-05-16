@@ -74,7 +74,8 @@
       "stopping": "Stopping",
       "restarting": "Restarting",
       "error": "Error",
-      "suspended": "Suspended"
+      "suspended": "Suspended",
+      "hibernated": "Hibernated"
     },
     "actions": {
       "start": "Start",
