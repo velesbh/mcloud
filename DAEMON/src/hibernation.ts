@@ -1,3 +1,4 @@
+// v2 — no embedded join; profiles fetched in a separate bulk query
 import { supabase } from "./supabase.js";
 import { log } from "./logger.js";
 import { config } from "./config.js";

@@ -131,7 +131,8 @@ async function subscribeKnownServers() {
     .select("id")
     .eq("node_id", config.nodeId);
   if (error) {
-    log.warn("subscribeKnownServers failed", { error });
+    // Non-fatal — no servers assigned to this node yet, or schema not ready
+    log.info("subscribeKnownServers: no servers found or schema not ready (OK on first run)");
     return;
   }
   for (const row of data ?? []) {
