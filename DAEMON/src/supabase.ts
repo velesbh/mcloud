@@ -10,5 +10,5 @@ export const supabase = createClient(config.supabaseUrl, config.supabaseServiceK
   realtime: { params: { eventsPerSecond: 20 } },
   // MCloud objects live in their own schema (other apps share this Supabase
   // project). All .from() and .rpc() calls auto-resolve to mcloud.*.
-  db: { schema: "mcloud" },
+  db: { schema: "public" },
 });

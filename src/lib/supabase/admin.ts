@@ -13,7 +13,7 @@ export function createAdminSupabaseClient() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {
       auth: { autoRefreshToken: false, persistSession: false },
-      db: { schema: "mcloud" },
+      db: { schema: "public" },
     }
   );
 }

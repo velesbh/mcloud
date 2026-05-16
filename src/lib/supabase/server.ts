@@ -9,6 +9,6 @@ export async function createServerSupabaseClient() {
   return createClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { db: { schema: "mcloud" } }
+    { db: { schema: "public" } }
   );
 }

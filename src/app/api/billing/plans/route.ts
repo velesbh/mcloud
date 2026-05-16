@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
   const supabase = createAdminSupabaseClient();
   const { data, error } = await supabase
     .from("billing_plans")
-    .insert(parsed.data as Database["mcloud"]["Tables"]["billing_plans"]["Insert"])
+    .insert(parsed.data as Database["public"]["Tables"]["billing_plans"]["Insert"])
     .select()
     .single();
 

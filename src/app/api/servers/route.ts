@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
       max_servers: quotas.max_servers,
       max_ram_mb: quotas.max_ram_mb,
       max_disk_mb: quotas.max_disk_mb,
-    } as Database["mcloud"]["Tables"]["profiles"]["Insert"],
+    } as Database["public"]["Tables"]["profiles"]["Insert"],
     { onConflict: "clerk_user_id" }
   );
 

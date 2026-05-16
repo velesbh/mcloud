@@ -17,7 +17,7 @@ export async function PATCH(
   const supabase = createAdminSupabaseClient();
   const { data, error } = await supabase
     .from("regions")
-    .update(body as Database["mcloud"]["Tables"]["regions"]["Update"])
+    .update(body as Database["public"]["Tables"]["regions"]["Update"])
     .eq("id", id)
     .select()
     .single();
