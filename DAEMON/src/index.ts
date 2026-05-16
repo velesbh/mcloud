@@ -13,14 +13,39 @@ import { subscribeFileManager } from "./file-manager.js";
 import { startHibernationCron } from "./hibernation.js";
 
 /**
- * Mark the node as online in the DB so admin sees it as live.
+ * Upsert this node into the DB on startup so it auto-registers.
+ * If the node already exists (same NODE_ID), just mark it online.
+ * If it doesn't exist yet, create it with all details from env/auto-detect.
  */
 async function registerNode() {
   const { error } = await supabase
     .from("nodes")
-    .update({ status: "online", last_seen_at: new Date().toISOString() })
-    .eq("id", config.nodeId);
-  if (error) log.warn("registerNode failed", { error });
+    .upsert(
+      {
+        id: config.nodeId,
+        name: config.nodeName,
+        fqdn: config.nodeFqdn,
+        ip: config.nodeIp,
+        region_id: config.nodeRegionId,
+        total_ram_mb: config.nodeTotalRamMb,
+        total_cpu: config.nodeTotalCpu,
+        total_disk_mb: config.nodeTotalDiskMb,
+        overallocation_percent: config.nodeOverallocationPercent,
+        status: "online",
+        last_seen_at: new Date().toISOString(),
+      },
+      { onConflict: "id" }
+    );
+  if (error) {
+    log.error("registerNode failed", { error });
+    process.exit(1);
+  }
+  log.info("node registered", {
+    id: config.nodeId,
+    name: config.nodeName,
+    ip: config.nodeIp,
+    region: config.nodeRegionId ?? "unassigned",
+  });
 }
 
 /**
