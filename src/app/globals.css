@@ -253,7 +253,7 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background: hsl(var(--border));
-  border-radius: 10px;
+  border-radius: 0;
   border: 2px solid hsl(var(--background));
 }
 ::-webkit-scrollbar-thumb:hover {
@@ -284,24 +284,42 @@ textarea:focus-visible {
 }
 
 /* =============================================
-   CARDS — modern elevation
+   PIXEL-ART SYSTEM — square everything by default
    ============================================= */
+
 [data-slot="card"],
 .card {
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-1);
+  border-radius: 0;
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.04),
+    3px 3px 0 rgba(0, 0, 0, 0.3);
   background: hsl(var(--card));
-  border: 1px solid hsl(var(--border));
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
+  border: 2px solid hsl(var(--border));
 }
 
-/* =============================================
-   BUTTONS — keep tight radius, modern interactions
-   ============================================= */
+/* Crisp lucide icons */
+svg.lucide {
+  stroke-width: 2.25;
+  shape-rendering: geometricPrecision;
+}
+
+/* Square icon-tile helper */
+.icon-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  background: rgba(0, 0, 0, 0.35);
+  border: 2px solid hsl(var(--border));
+  border-radius: 0;
+  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* Button micro-interactions */
 button {
-  transition: transform 0.08s ease, background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.05s ease, background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
-
 button:active:not([disabled]) {
-  transform: translateY(0.5px);
+  transform: translateY(1px);
 }
