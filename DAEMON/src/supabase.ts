@@ -12,5 +12,5 @@ export const supabase = createClient(config.supabaseUrl, config.supabaseServiceK
   auth: { persistSession: false, autoRefreshToken: false },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   realtime: { params: { eventsPerSecond: 20 }, transport: ws as any },
-  db: { schema: "public" },
+  db: { schema: "mcloud" },
 });

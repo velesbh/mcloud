@@ -35,10 +35,10 @@ export type UserRole = "user" | "admin";
 export type GameEdition = "java" | "bedrock";
 
 export interface Database {
-  // All MCloud objects live in the `public` Postgres schema
-  // The Supabase clients are configured with { db: { schema: 'public' } }
+  // All MCloud objects live in the `mcloud` Postgres schema.
+  // The Supabase clients are configured with { db: { schema: 'mcloud' } }
   // so the JS layer's .from() / .rpc() calls resolve here automatically.
-  public: {
+  mcloud: {
     Tables: {
       profiles: {
         Row: {
@@ -116,7 +116,7 @@ export interface Database {
       nodes: {
         Row: {
           id: string;
-          region_id: string;
+          region_id: string | null;
           name: string;
           fqdn: string;
           ip: string;
@@ -134,7 +134,7 @@ export interface Database {
         };
         Insert: {
           id?: string;
-          region_id: string;
+          region_id?: string | null;
           name: string;
           fqdn: string;
           ip: string;
@@ -490,7 +490,12 @@ export interface Database {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      pick_node_with_stock: {
+        Args: { want_region: string | null; want_ram_mb: number; want_cpu: number; want_disk_mb: number };
+        Returns: string | null;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };
@@ -527,14 +532,14 @@ export interface NodeStock {
   running_count: number;
 }
 
-export type Profile = Database["public"]["Tables"]["profiles"]["Row"];
-export type Region = Database["public"]["Tables"]["regions"]["Row"];
-export type Node = Database["public"]["Tables"]["nodes"]["Row"];
-export type Allocation = Database["public"]["Tables"]["allocations"]["Row"];
-export type Server = Database["public"]["Tables"]["servers"]["Row"];
-export type ServerBackup = Database["public"]["Tables"]["server_backups"]["Row"];
-export type ModInstallation = Database["public"]["Tables"]["mod_installations"]["Row"];
-export type ConsoleEvent = Database["public"]["Tables"]["console_events"]["Row"];
-export type ServerFile = Database["public"]["Tables"]["server_files"]["Row"];
-export type PublicIp = Database["public"]["Tables"]["public_ips"]["Row"];
-export type BillingPlan = Database["public"]["Tables"]["billing_plans"]["Row"];
+export type Profile = Database["mcloud"]["Tables"]["profiles"]["Row"];
+export type Region = Database["mcloud"]["Tables"]["regions"]["Row"];
+export type Node = Database["mcloud"]["Tables"]["nodes"]["Row"];
+export type Allocation = Database["mcloud"]["Tables"]["allocations"]["Row"];
+export type Server = Database["mcloud"]["Tables"]["servers"]["Row"];
+export type ServerBackup = Database["mcloud"]["Tables"]["server_backups"]["Row"];
+export type ModInstallation = Database["mcloud"]["Tables"]["mod_installations"]["Row"];
+export type ConsoleEvent = Database["mcloud"]["Tables"]["console_events"]["Row"];
+export type ServerFile = Database["mcloud"]["Tables"]["server_files"]["Row"];
+export type PublicIp = Database["mcloud"]["Tables"]["public_ips"]["Row"];
+export type BillingPlan = Database["mcloud"]["Tables"]["billing_plans"]["Row"];
