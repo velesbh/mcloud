@@ -5,6 +5,7 @@ import { config } from "./config.js";
 import { log } from "./logger.js";
 import { supabase } from "./supabase.js";
 import { broadcastConsole, persistConsoleLine } from "./console-bridge.js";
+import { ensureJar } from "./jar-manager.js";
 
 interface Running {
   serverId: string;
@@ -38,15 +39,6 @@ async function setStatus(serverId: string, status: string) {
     .eq("id", serverId);
 }
 
-/**
- * Locate (or hint that we need) the server jar for a given loader+version.
- * Real impl would download from Mojang/PaperMC/etc. For now we expect
- * the file to be pre-staged.
- */
-function jarFor(loader: string, version: string): string {
-  // Convention: <SERVERS_DIR>/_jars/{loader}-{version}.jar
-  return path.join(config.serversDir, "_jars", `${loader}-${version}.jar`);
-}
 
 export async function startServer(serverId: string) {
   if (procs.has(serverId)) {
@@ -71,7 +63,7 @@ export async function startServer(serverId: string) {
   const dir = await ensureServerDir(serverId);
   await ensureEula(dir);
 
-  // Write server.properties (simple version)
+  // Write server.properties
   const props = [
     `motd=${srv.motd ?? srv.name}`,
     `max-players=${srv.max_players ?? 20}`,
@@ -92,7 +84,19 @@ export async function startServer(serverId: string) {
     cmd = config.bedrockBin;
     args = [];
   } else {
-    const jar = jarFor(srv.loader, srv.game_version);
+    // Auto-download the jar if missing
+    let jar: string;
+    try {
+      await broadcastConsole(serverId, `> Fetching ${srv.loader} ${srv.game_version} jar...`, "system");
+      jar = await ensureJar(srv.loader, srv.game_version);
+    } catch (err) {
+      const msg = `[error] Failed to download server jar: ${String(err)}`;
+      log.error("jar download failed", { serverId, err });
+      await broadcastConsole(serverId, msg, "system");
+      await setStatus(serverId, "error");
+      return;
+    }
+
     cmd = config.javaBin;
     const xmx = `-Xmx${srv.ram_mb}M`;
     const xms = `-Xms${Math.floor(srv.ram_mb / 2)}M`;
@@ -119,6 +123,16 @@ export async function startServer(serverId: string) {
       void broadcastConsole(serverId, trimmed, "server");
       void persistConsoleLine(serverId, trimmed, "server");
     }
+  });
+
+  proc.on("error", async (err) => {
+    log.error("server process error", { serverId, err: err.message });
+    procs.delete(serverId);
+    const hint = (err as NodeJS.ErrnoException).code === "ENOENT"
+      ? " — is Java installed? Run: apt-get install -y openjdk-21-jre-headless"
+      : "";
+    await broadcastConsole(serverId, `[error] ${err.message}${hint}`, "system");
+    await setStatus(serverId, "error");
   });
 
   proc.on("spawn", () => {
