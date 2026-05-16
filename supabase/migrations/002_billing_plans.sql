@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS billing_plans (
 CREATE INDEX IF NOT EXISTS idx_billing_plans_visible_sort
   ON billing_plans (is_visible, sort_order);
 
+DROP TRIGGER IF EXISTS set_billing_plans_updated_at ON billing_plans;
 CREATE TRIGGER set_billing_plans_updated_at
   BEFORE UPDATE ON billing_plans
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -36,5 +37,5 @@ CREATE POLICY billing_plans_public_read
 -- Admins can do everything
 CREATE POLICY billing_plans_admin_all
   ON billing_plans FOR ALL
-  USING (auth.is_admin())
-  WITH CHECK (auth.is_admin());
+  USING (is_admin())
+  WITH CHECK (is_admin());

@@ -118,3 +118,6 @@ CREATE TRIGGER servers_touch_active_trg
   BEFORE UPDATE ON servers
   FOR EACH ROW
   EXECUTE FUNCTION servers_touch_active();
+
+-- node_stock view should also be visible for admin stock page
+-- (no Realtime changes needed here; server_backups is already added in 001)

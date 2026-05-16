@@ -8,34 +8,52 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ============================================================
--- ENUMS
+-- ENUMS (idempotent with DO blocks)
 -- ============================================================
-CREATE TYPE server_status AS ENUM (
-  'creating', 'offline', 'starting', 'running',
-  'stopping', 'restarting', 'error', 'suspended'
-);
+DO $$ BEGIN
+  CREATE TYPE server_status AS ENUM (
+    'creating', 'offline', 'starting', 'running',
+    'stopping', 'restarting', 'error', 'suspended'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE node_status AS ENUM (
-  'online', 'offline', 'maintenance', 'unknown'
-);
+DO $$ BEGIN
+  CREATE TYPE node_status AS ENUM (
+    'online', 'offline', 'maintenance', 'unknown'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE server_loader AS ENUM (
-  'vanilla', 'paper', 'spigot', 'fabric',
-  'forge', 'neoforge', 'quilt', 'bedrock'
-);
+DO $$ BEGIN
+  CREATE TYPE server_loader AS ENUM (
+    'vanilla', 'paper', 'spigot', 'fabric',
+    'forge', 'neoforge', 'quilt', 'bedrock'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE backup_status AS ENUM (
-  'creating', 'available', 'restoring', 'failed'
-);
+DO $$ BEGIN
+  CREATE TYPE backup_status AS ENUM (
+    'creating', 'available', 'restoring', 'failed'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE user_role AS ENUM ('user', 'admin');
+DO $$ BEGIN
+  CREATE TYPE user_role AS ENUM ('user', 'admin');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE game_edition AS ENUM ('java', 'bedrock');
+DO $$ BEGIN
+  CREATE TYPE game_edition AS ENUM ('java', 'bedrock');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- ============================================================
 -- REGIONS
 -- ============================================================
-CREATE TABLE regions (
+CREATE TABLE IF NOT EXISTS regions (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name        TEXT NOT NULL,
   slug        TEXT NOT NULL UNIQUE,
@@ -48,7 +66,7 @@ CREATE TABLE regions (
 -- ============================================================
 -- NODES
 -- ============================================================
-CREATE TABLE nodes (
+CREATE TABLE IF NOT EXISTS nodes (
   id                        UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   region_id                 UUID NOT NULL REFERENCES regions(id) ON DELETE RESTRICT,
   name                      TEXT NOT NULL,
@@ -67,7 +85,7 @@ CREATE TABLE nodes (
 -- ============================================================
 -- PUBLIC IPs
 -- ============================================================
-CREATE TABLE public_ips (
+CREATE TABLE IF NOT EXISTS public_ips (
   id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   node_id    UUID NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
   ip         INET NOT NULL,
@@ -78,7 +96,7 @@ CREATE TABLE public_ips (
 -- ============================================================
 -- ALLOCATIONS
 -- ============================================================
-CREATE TABLE allocations (
+CREATE TABLE IF NOT EXISTS allocations (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   node_id     UUID NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
   ip          INET NOT NULL,
@@ -92,7 +110,7 @@ CREATE TABLE allocations (
 -- ============================================================
 -- PROFILES
 -- ============================================================
-CREATE TABLE profiles (
+CREATE TABLE IF NOT EXISTS profiles (
   id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   clerk_user_id TEXT NOT NULL UNIQUE,
   email         TEXT NOT NULL,
@@ -109,7 +127,7 @@ CREATE TABLE profiles (
 -- ============================================================
 -- SERVERS
 -- ============================================================
-CREATE TABLE servers (
+CREATE TABLE IF NOT EXISTS servers (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id         UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   clerk_user_id   TEXT NOT NULL,
@@ -142,7 +160,7 @@ ALTER TABLE allocations
 -- ============================================================
 -- SERVER BACKUPS
 -- ============================================================
-CREATE TABLE server_backups (
+CREATE TABLE IF NOT EXISTS server_backups (
   id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   server_id    UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
   name         TEXT NOT NULL,
@@ -156,7 +174,7 @@ CREATE TABLE server_backups (
 -- ============================================================
 -- MOD INSTALLATIONS
 -- ============================================================
-CREATE TABLE mod_installations (
+CREATE TABLE IF NOT EXISTS mod_installations (
   id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   server_id           UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
   modrinth_project_id TEXT NOT NULL,
@@ -173,7 +191,7 @@ CREATE TABLE mod_installations (
 -- ============================================================
 -- CONSOLE EVENTS
 -- ============================================================
-CREATE TABLE console_events (
+CREATE TABLE IF NOT EXISTS console_events (
   id         BIGSERIAL PRIMARY KEY,
   server_id  UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
   line       TEXT NOT NULL,
@@ -188,7 +206,7 @@ $$ LANGUAGE SQL;
 -- ============================================================
 -- SERVER FILES
 -- ============================================================
-CREATE TABLE server_files (
+CREATE TABLE IF NOT EXISTS server_files (
   id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   server_id    UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
   path         TEXT NOT NULL,
@@ -205,15 +223,15 @@ CREATE TABLE server_files (
 -- ============================================================
 -- INDEXES
 -- ============================================================
-CREATE INDEX idx_servers_clerk_user_id ON servers(clerk_user_id);
-CREATE INDEX idx_servers_node_id ON servers(node_id);
-CREATE INDEX idx_servers_status ON servers(status);
-CREATE INDEX idx_allocations_node_id ON allocations(node_id);
-CREATE INDEX idx_allocations_server_id ON allocations(server_id);
-CREATE INDEX idx_server_backups_server_id ON server_backups(server_id);
-CREATE INDEX idx_mod_installations_server_id ON mod_installations(server_id);
-CREATE INDEX idx_console_events_server_id ON console_events(server_id, created_at DESC);
-CREATE INDEX idx_server_files_server_id_path ON server_files(server_id, path);
+CREATE INDEX IF NOT EXISTS idx_servers_clerk_user_id ON servers(clerk_user_id);
+CREATE INDEX IF NOT EXISTS idx_servers_node_id ON servers(node_id);
+CREATE INDEX IF NOT EXISTS idx_servers_status ON servers(status);
+CREATE INDEX IF NOT EXISTS idx_allocations_node_id ON allocations(node_id);
+CREATE INDEX IF NOT EXISTS idx_allocations_server_id ON allocations(server_id);
+CREATE INDEX IF NOT EXISTS idx_server_backups_server_id ON server_backups(server_id);
+CREATE INDEX IF NOT EXISTS idx_mod_installations_server_id ON mod_installations(server_id);
+CREATE INDEX IF NOT EXISTS idx_console_events_server_id ON console_events(server_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_server_files_server_id_path ON server_files(server_id, path);
 
 -- ============================================================
 -- UPDATED_AT TRIGGER
@@ -226,14 +244,23 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_regions_updated_at ON regions;
 CREATE TRIGGER trg_regions_updated_at
   BEFORE UPDATE ON regions FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS trg_nodes_updated_at ON nodes;
 CREATE TRIGGER trg_nodes_updated_at
   BEFORE UPDATE ON nodes FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS trg_profiles_updated_at ON profiles;
 CREATE TRIGGER trg_profiles_updated_at
   BEFORE UPDATE ON profiles FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS trg_servers_updated_at ON servers;
 CREATE TRIGGER trg_servers_updated_at
   BEFORE UPDATE ON servers FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS trg_server_files_updated_at ON server_files;
 CREATE TRIGGER trg_server_files_updated_at
   BEFORE UPDATE ON server_files FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
@@ -252,16 +279,21 @@ ALTER TABLE allocations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public_ips ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================
--- HELPER FUNCTIONS
+-- HELPER FUNCTIONS (public schema — auth schema is restricted in Supabase)
+-- clerk_uid() reads the Clerk user-id ("sub" claim) from the validated JWT.
+-- is_admin()  checks the profiles table; SECURITY DEFINER bypasses RLS.
 -- ============================================================
-CREATE OR REPLACE FUNCTION auth.clerk_user_id() RETURNS TEXT AS $$
-  SELECT (current_setting('request.jwt.claims', true)::jsonb ->> 'sub');
+CREATE OR REPLACE FUNCTION public.clerk_uid() RETURNS TEXT AS $$
+  SELECT COALESCE(
+    current_setting('request.jwt.claims', true)::jsonb ->> 'sub',
+    ''
+  );
 $$ LANGUAGE SQL STABLE;
 
-CREATE OR REPLACE FUNCTION auth.is_admin() RETURNS BOOLEAN AS $$
+CREATE OR REPLACE FUNCTION public.is_admin() RETURNS BOOLEAN AS $$
   SELECT EXISTS (
     SELECT 1 FROM profiles
-    WHERE clerk_user_id = auth.clerk_user_id()
+    WHERE clerk_user_id = public.clerk_uid()
       AND role = 'admin'
   );
 $$ LANGUAGE SQL STABLE SECURITY DEFINER;
@@ -271,15 +303,15 @@ $$ LANGUAGE SQL STABLE SECURITY DEFINER;
 -- ============================================================
 CREATE POLICY "users_read_own_profile"
   ON profiles FOR SELECT
-  USING (clerk_user_id = auth.clerk_user_id());
+  USING (clerk_user_id = clerk_uid());
 
 CREATE POLICY "admins_read_all_profiles"
   ON profiles FOR SELECT
-  USING (auth.is_admin());
+  USING (is_admin());
 
 CREATE POLICY "users_update_own_profile"
   ON profiles FOR UPDATE
-  USING (clerk_user_id = auth.clerk_user_id());
+  USING (clerk_user_id = clerk_uid());
 
 CREATE POLICY "service_role_insert_profiles"
   ON profiles FOR INSERT
@@ -290,27 +322,27 @@ CREATE POLICY "service_role_insert_profiles"
 -- ============================================================
 CREATE POLICY "users_read_own_servers"
   ON servers FOR SELECT
-  USING (clerk_user_id = auth.clerk_user_id());
+  USING (clerk_user_id = clerk_uid());
 
 CREATE POLICY "admins_read_all_servers"
   ON servers FOR SELECT
-  USING (auth.is_admin());
+  USING (is_admin());
 
 CREATE POLICY "users_insert_own_servers"
   ON servers FOR INSERT
-  WITH CHECK (clerk_user_id = auth.clerk_user_id());
+  WITH CHECK (clerk_user_id = clerk_uid());
 
 CREATE POLICY "users_update_own_servers"
   ON servers FOR UPDATE
-  USING (clerk_user_id = auth.clerk_user_id());
+  USING (clerk_user_id = clerk_uid());
 
 CREATE POLICY "admins_update_any_server"
   ON servers FOR UPDATE
-  USING (auth.is_admin());
+  USING (is_admin());
 
 CREATE POLICY "users_delete_own_servers"
   ON servers FOR DELETE
-  USING (clerk_user_id = auth.clerk_user_id());
+  USING (clerk_user_id = clerk_uid());
 
 -- ============================================================
 -- RLS — SERVER_BACKUPS
@@ -321,13 +353,13 @@ CREATE POLICY "users_access_own_backups"
     EXISTS (
       SELECT 1 FROM servers
       WHERE servers.id = server_backups.server_id
-        AND servers.clerk_user_id = auth.clerk_user_id()
+        AND servers.clerk_user_id = clerk_uid()
     )
   );
 
 CREATE POLICY "admins_access_all_backups"
   ON server_backups FOR ALL
-  USING (auth.is_admin());
+  USING (is_admin());
 
 -- ============================================================
 -- RLS — MOD_INSTALLATIONS
@@ -338,7 +370,7 @@ CREATE POLICY "users_access_own_mods"
     EXISTS (
       SELECT 1 FROM servers
       WHERE servers.id = mod_installations.server_id
-        AND servers.clerk_user_id = auth.clerk_user_id()
+        AND servers.clerk_user_id = clerk_uid()
     )
   );
 
@@ -351,7 +383,7 @@ CREATE POLICY "users_access_own_console"
     EXISTS (
       SELECT 1 FROM servers
       WHERE servers.id = console_events.server_id
-        AND servers.clerk_user_id = auth.clerk_user_id()
+        AND servers.clerk_user_id = clerk_uid()
     )
   );
 
@@ -364,7 +396,7 @@ CREATE POLICY "users_access_own_files"
     EXISTS (
       SELECT 1 FROM servers
       WHERE servers.id = server_files.server_id
-        AND servers.clerk_user_id = auth.clerk_user_id()
+        AND servers.clerk_user_id = clerk_uid()
     )
   );
 
@@ -377,7 +409,7 @@ CREATE POLICY "anyone_read_nodes"
 
 CREATE POLICY "admins_manage_nodes"
   ON nodes FOR ALL
-  USING (auth.is_admin());
+  USING (is_admin());
 
 -- ============================================================
 -- RLS — REGIONS
@@ -388,7 +420,7 @@ CREATE POLICY "anyone_read_regions"
 
 CREATE POLICY "admins_manage_regions"
   ON regions FOR ALL
-  USING (auth.is_admin());
+  USING (is_admin());
 
 -- ============================================================
 -- RLS — ALLOCATIONS
@@ -399,20 +431,20 @@ CREATE POLICY "users_read_own_allocation"
     server_id IS NOT NULL AND EXISTS (
       SELECT 1 FROM servers
       WHERE servers.id = allocations.server_id
-        AND servers.clerk_user_id = auth.clerk_user_id()
+        AND servers.clerk_user_id = clerk_uid()
     )
   );
 
 CREATE POLICY "admins_manage_allocations"
   ON allocations FOR ALL
-  USING (auth.is_admin());
+  USING (is_admin());
 
 -- ============================================================
 -- RLS — PUBLIC_IPS
 -- ============================================================
 CREATE POLICY "admins_manage_public_ips"
   ON public_ips FOR ALL
-  USING (auth.is_admin());
+  USING (is_admin());
 
 -- ============================================================
 -- FREE TIER ENFORCEMENT TRIGGER
@@ -445,16 +477,26 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+DROP TRIGGER IF EXISTS trg_check_server_limit ON servers;
 CREATE TRIGGER trg_check_server_limit
   BEFORE INSERT ON servers
   FOR EACH ROW EXECUTE FUNCTION check_server_limit();
 
 -- ============================================================
--- REALTIME
+-- REALTIME  (DO blocks because ADD TABLE errors if already present)
 -- ============================================================
-ALTER PUBLICATION supabase_realtime ADD TABLE servers;
-ALTER PUBLICATION supabase_realtime ADD TABLE console_events;
-ALTER PUBLICATION supabase_realtime ADD TABLE server_backups;
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE servers;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE console_events;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE server_backups;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- ============================================================
 -- STORAGE BUCKETS
@@ -470,7 +512,7 @@ CREATE POLICY "users_access_own_server_files_storage"
   USING (
     bucket_id = 'server-files' AND
     (storage.foldername(name))[1] IN (
-      SELECT id::text FROM servers WHERE clerk_user_id = auth.clerk_user_id()
+      SELECT id::text FROM servers WHERE clerk_user_id = clerk_uid()
     )
   );
 
@@ -479,7 +521,7 @@ CREATE POLICY "users_access_own_server_backups_storage"
   USING (
     bucket_id = 'server-backups' AND
     (storage.foldername(name))[1] IN (
-      SELECT id::text FROM servers WHERE clerk_user_id = auth.clerk_user_id()
+      SELECT id::text FROM servers WHERE clerk_user_id = clerk_uid()
     )
   );
 
