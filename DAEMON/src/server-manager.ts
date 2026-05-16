@@ -7,6 +7,7 @@ import { supabase } from "./supabase.js";
 import { broadcastConsole, broadcastServerStatus, persistConsoleLine } from "./console-bridge.js";
 import { ensureJar } from "./jar-manager.js";
 import { installJava, requiredJavaMajor } from "./java-installer.js";
+import { installModpack } from "./modpack-installer.js";
 
 interface Running {
   serverId: string;
@@ -147,7 +148,7 @@ export async function startServer(serverId: string) {
 
   const { data: srv, error } = await supabase
     .from("servers")
-    .select("id, name, edition, game_version, loader, ram_mb, max_players, motd, allocation_id, allocations(local_ip, port)")
+    .select("id, name, edition, game_version, loader, ram_mb, max_players, motd, allocation_id, modpack_url, modpack_installed, allocations(local_ip, port)")
     .eq("id", serverId)
     .single();
 
@@ -161,6 +162,19 @@ export async function startServer(serverId: string) {
 
   const dir = await ensureServerDir(serverId);
   await ensureEula(dir);
+
+  // Install modpack on first start (if URL set and not yet installed)
+  const srvWithModpack = srv as typeof srv & { modpack_url?: string | null; modpack_installed?: boolean };
+  if (srvWithModpack.modpack_url && !srvWithModpack.modpack_installed) {
+    try {
+      await installModpack(serverId, srvWithModpack.modpack_url);
+    } catch (err) {
+      log.error("modpack install failed", { serverId, err: String(err) });
+      await broadcastConsole(serverId, `[modpack] Install failed: ${String(err)}`, "system");
+      await setStatus(serverId, "error");
+      return;
+    }
+  }
 
   // Resolve bind address + port from allocation (fall back to 0.0.0.0:25565)
   const alloc = Array.isArray(srv.allocations)

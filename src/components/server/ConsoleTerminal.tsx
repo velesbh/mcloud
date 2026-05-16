@@ -1,22 +1,61 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useSupabaseClient } from "@/lib/supabase/client";
+import { Maximize2, Minimize2, Trash2, ChevronRight } from "lucide-react";
+import { PixelButton } from "@/components/pixel/PixelPanel";
 import { LoadingSpinner } from "@/components/shared/MinecraftLoader";
+import { cn } from "@/lib/utils";
 
 interface ConsoleTerminalProps {
   serverId: string;
 }
 
+// Common Minecraft server commands for autocomplete
+const COMMAND_HINTS = [
+  "help", "list", "stop", "save-all", "save-on", "save-off",
+  "op ", "deop ", "kick ", "ban ", "pardon ", "whitelist ",
+  "say ", "tell ", "tellraw ", "msg ", "me ",
+  "give ", "summon ", "kill ", "tp ", "teleport ",
+  "gamemode ", "difficulty ", "weather ", "time ", "seed",
+  "spawnpoint ", "setworldspawn", "worldborder ", "gamerule ",
+  "effect ", "enchant ", "clear ", "fill ", "setblock ", "clone ",
+  "execute ", "function ", "playsound ", "particle ",
+];
+
 export function ConsoleTerminal({ serverId }: ConsoleTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<import("@xterm/xterm").Terminal | null>(null);
+  const fitRef = useRef<import("@xterm/addon-fit").FitAddon | null>(null);
   const [connected, setConnected] = useState(false);
   const [input, setInput] = useState("");
+  const [fullscreen, setFullscreen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const supabase = useSupabaseClient();
 
+  // Command history — persisted to localStorage
+  const historyKey = `mcloud-console-history-${serverId}`;
+  const historyRef = useRef<string[]>([]);
+  const [historyIdx, setHistoryIdx] = useState<number>(-1);
+  const [draftInput, setDraftInput] = useState("");
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(historyKey);
+      if (raw) historyRef.current = JSON.parse(raw);
+    } catch {}
+  }, [historyKey]);
+
+  function pushHistory(cmd: string) {
+    historyRef.current = [...historyRef.current.filter((c) => c !== cmd), cmd].slice(-50);
+    try { localStorage.setItem(historyKey, JSON.stringify(historyRef.current)); } catch {}
+    setHistoryIdx(-1);
+  }
+
   useEffect(() => {
     let term: import("@xterm/xterm").Terminal;
+    let observer: ResizeObserver | null = null;
+    let cleanup: (() => void) | null = null;
 
     async function init() {
       const { Terminal } = await import("@xterm/xterm");
@@ -24,30 +63,31 @@ export function ConsoleTerminal({ serverId }: ConsoleTerminalProps) {
 
       term = new Terminal({
         theme: {
-          background: "hsl(0 0% 5%)",
-          foreground: "hsl(0 0% 90%)",
-          cursor: "#22c55e",
-          selectionBackground: "rgba(34,197,94,0.3)",
+          background: "#0a0a0a",
+          foreground: "#d4d4d4",
+          cursor: "#5a9a2e",
+          selectionBackground: "rgba(90,154,46,0.3)",
           black: "#1a1a1a",
-          green: "#22c55e",
-          yellow: "#facc15",
-          red: "#ef4444",
-          cyan: "#22d3ee",
+          green: "#5a9a2e",
+          yellow: "#e8c93a",
+          red: "#d92424",
+          cyan: "#38bdf8",
           white: "#e5e5e5",
-          brightGreen: "#4ade80",
+          brightGreen: "#6db535",
           brightBlack: "#3f3f3f",
         },
         fontFamily: '"Geist Mono", "Fira Code", Consolas, monospace',
-        fontSize: 13,
-        lineHeight: 1.5,
-        cursorBlink: false,
+        fontSize: 12,
+        lineHeight: 1.4,
+        cursorBlink: true,
         convertEol: true,
-        scrollback: 1000,
+        scrollback: 5000,
         disableStdin: true,
       });
 
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
+      fitRef.current = fitAddon;
 
       if (containerRef.current) {
         term.open(containerRef.current);
@@ -55,7 +95,7 @@ export function ConsoleTerminal({ serverId }: ConsoleTerminalProps) {
       }
       termRef.current = term;
 
-      const observer = new ResizeObserver(() => fitAddon.fit());
+      observer = new ResizeObserver(() => { try { fitAddon.fit(); } catch {} });
       if (containerRef.current) observer.observe(containerRef.current);
 
       // Load existing logs
@@ -63,77 +103,101 @@ export function ConsoleTerminal({ serverId }: ConsoleTerminalProps) {
         const res = await fetch(`/api/servers/${serverId}/console`);
         const events = await res.json();
         for (const event of events) {
-          const color =
-            event.source === "user"
-              ? "\x1b[32m"
-              : event.source === "system"
-              ? "\x1b[36m"
-              : "\x1b[0m";
-          term.writeln(`${color}${event.line}\x1b[0m`);
+          colorLine(event.line, event.source);
         }
       } catch {}
 
       function colorLine(line: string, source: string) {
-        const color =
-          source === "user"   ? "\x1b[32m" :
-          source === "system" ? "\x1b[36m" :
-                                "\x1b[0m";
+        let color = "\x1b[0m";
+        if (source === "user") color = "\x1b[32m";
+        else if (source === "system") color = "\x1b[36m";
+        else if (line.includes("ERROR") || line.includes("Exception")) color = "\x1b[31m";
+        else if (line.includes("WARN")) color = "\x1b[33m";
         term.writeln(`${color}${line}\x1b[0m`);
       }
 
-      // Subscribe to broadcast channel — daemon sends here directly
-      // (fast path, no DB round-trip required)
+      // Broadcast (fast)
       const broadcastChannel = supabase
-        .channel(`console:${serverId}`, {
-          config: { broadcast: { self: false } },
-        })
+        .channel(`console:${serverId}`, { config: { broadcast: { self: false } } })
         .on("broadcast", { event: "line" }, (msg) => {
           const { line, source } = msg.payload as { line: string; source: string };
           colorLine(line, source);
         })
-        .subscribe((status) => {
-          if (status === "SUBSCRIBED") setConnected(true);
-        });
+        .subscribe((status) => { if (status === "SUBSCRIBED") setConnected(true); });
 
-      // Also subscribe to postgres_changes for cross-tab replay
+      // DB fallback
       const dbChannel = supabase
         .channel(`console-db-${serverId}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "mcloud",
-            table: "console_events",
-            filter: `server_id=eq.${serverId}`,
-          },
-          (payload) => {
-            const { line, source } = payload.new as { line: string; source: string };
-            colorLine(line, source);
-          }
-        )
+        .on("postgres_changes", {
+          event: "INSERT", schema: "mcloud", table: "console_events",
+          filter: `server_id=eq.${serverId}`,
+        }, (payload) => {
+          const { line, source } = payload.new as { line: string; source: string };
+          colorLine(line, source);
+        })
         .subscribe();
 
       setConnected(true);
 
-      return () => {
-        observer.disconnect();
+      cleanup = () => {
         broadcastChannel.unsubscribe();
         dbChannel.unsubscribe();
         term.dispose();
       };
     }
 
-    const cleanup = init();
+    void init();
     return () => {
-      cleanup.then((fn) => fn?.());
+      observer?.disconnect();
+      cleanup?.();
     };
   }, [serverId, supabase]);
+
+  // Refit terminal when fullscreen toggles
+  useEffect(() => {
+    const t = setTimeout(() => { try { fitRef.current?.fit(); } catch {} }, 50);
+    return () => clearTimeout(t);
+  }, [fullscreen]);
+
+  const onInputChange = useCallback((v: string) => {
+    setInput(v);
+    setHistoryIdx(-1);
+    if (!v.trim()) { setSuggestions([]); return; }
+    const lower = v.toLowerCase();
+    setSuggestions(COMMAND_HINTS.filter((c) => c.startsWith(lower)).slice(0, 5));
+  }, []);
+
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      const hist = historyRef.current;
+      if (!hist.length) return;
+      const next = historyIdx === -1 ? hist.length - 1 : Math.max(0, historyIdx - 1);
+      if (historyIdx === -1) setDraftInput(input);
+      setHistoryIdx(next);
+      setInput(hist[next]);
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (historyIdx === -1) return;
+      const hist = historyRef.current;
+      const next = historyIdx + 1;
+      if (next >= hist.length) { setInput(draftInput); setHistoryIdx(-1); }
+      else { setInput(hist[next]); setHistoryIdx(next); }
+    } else if (e.key === "Tab" && suggestions.length) {
+      e.preventDefault();
+      setInput(suggestions[0]);
+      setSuggestions([]);
+    } else if (e.key === "Escape") {
+      setSuggestions([]);
+    }
+  }
 
   async function sendCommand(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim()) return;
     const cmd = input.trim();
-    setInput("");
+    setInput(""); setSuggestions([]);
+    pushHistory(cmd);
     await fetch(`/api/servers/${serverId}/console`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -142,41 +206,87 @@ export function ConsoleTerminal({ serverId }: ConsoleTerminalProps) {
     inputRef.current?.focus();
   }
 
+  function clearTerm() { termRef.current?.clear(); }
+
   return (
-    <div className="flex flex-col h-full rounded-lg border border-border overflow-hidden bg-[hsl(0_0%_5%)]">
-      {/* Status bar */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-border/50 bg-[hsl(0_0%_7%)]">
-        <div
-          className={`w-2 h-2 rounded-full ${connected ? "bg-green-500" : "bg-zinc-500"}`}
-        />
-        <span className="text-xs text-zinc-400 font-mono">
-          {connected ? "Connected" : "Connecting..."}
+    <div
+      className={cn(
+        "flex flex-col overflow-hidden",
+        fullscreen ? "fixed inset-0 z-50" : "h-[calc(100vh-220px)] min-h-[400px]",
+      )}
+      style={{
+        background: "#0a0a0a",
+        border: "2px solid hsl(var(--border))",
+        borderRadius: 0,
+        boxShadow: fullscreen ? "none" : "inset 1px 1px 0 rgba(255,255,255,0.04), 3px 3px 0 rgba(0,0,0,0.3)",
+      }}
+    >
+      {/* Status bar — pixel-art chrome */}
+      <div
+        className="flex items-center gap-2 px-3 py-1.5 border-b-2 border-border"
+        style={{ background: "rgba(0,0,0,0.5)" }}
+      >
+        <div className={cn("w-2 h-2", connected ? "bg-primary" : "bg-zinc-600")}
+          style={{ boxShadow: connected ? "0 0 4px #5a9a2e" : "none" }} />
+        <span className="text-[10px] text-zinc-400 font-minecraft uppercase">
+          {connected ? "Connected" : "Connecting"}
         </span>
-        {!connected && <LoadingSpinner size={12} className="text-zinc-400" />}
+        {!connected && <LoadingSpinner size={10} className="text-zinc-400" />}
+        <div className="flex-1" />
+        <PixelButton size="sm" variant="ghost" onClick={clearTerm}>
+          <Trash2 className="w-3 h-3" />
+          Clear
+        </PixelButton>
+        <PixelButton size="sm" variant="ghost" onClick={() => setFullscreen((v) => !v)}>
+          {fullscreen ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
+          {fullscreen ? "Exit" : "Full"}
+        </PixelButton>
       </div>
 
       {/* Terminal */}
-      <div
-        ref={containerRef}
-        className="flex-1 min-h-[300px] p-2"
-        style={{ height: "calc(100% - 84px)" }}
-      />
+      <div ref={containerRef} className="flex-1 min-h-0 p-2 overflow-hidden" />
 
-      {/* Input */}
+      {/* Suggestion bar */}
+      {suggestions.length > 0 && (
+        <div
+          className="flex items-center gap-1 px-3 py-1.5 border-t border-border/40 overflow-x-auto"
+          style={{ background: "rgba(0,0,0,0.4)" }}
+        >
+          <span className="text-[10px] text-muted-foreground font-minecraft uppercase mr-1">Tab:</span>
+          {suggestions.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => { setInput(s); setSuggestions([]); inputRef.current?.focus(); }}
+              className="px-2 py-0.5 text-[11px] font-mono text-primary border border-primary/40 hover:bg-primary/10"
+              style={{ borderRadius: 0 }}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Input — Minecraft chat-style */}
       <form
         onSubmit={sendCommand}
-        className="flex items-center gap-2 p-2 border-t border-border/50 bg-[hsl(0_0%_7%)]"
+        className="flex items-center gap-2 px-3 py-2 border-t-2 border-border"
+        style={{ background: "rgba(0,0,0,0.5)" }}
       >
-        <span className="text-green-500 font-mono text-sm shrink-0">&gt;</span>
+        <ChevronRight className="w-4 h-4 text-primary shrink-0" />
         <input
           ref={inputRef}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a command and press Enter..."
-          className="flex-1 bg-transparent text-sm font-mono text-zinc-200 placeholder:text-zinc-600 outline-none"
+          onChange={(e) => onInputChange(e.target.value)}
+          onKeyDown={onKeyDown}
+          placeholder="Type a command — ↑↓ history, Tab autocomplete"
+          className="flex-1 bg-transparent text-sm font-mono text-zinc-100 placeholder:text-zinc-600 outline-none"
           autoComplete="off"
           spellCheck={false}
         />
+        <span className="text-[10px] text-muted-foreground font-minecraft">
+          {historyRef.current.length > 0 && `${historyRef.current.length}H`}
+        </span>
       </form>
     </div>
   );

@@ -131,7 +131,9 @@ export async function POST(req: NextRequest) {
       max_players: input.max_players ?? 20,
       status: "offline",
       last_active_at: new Date().toISOString(),
-    })
+      modpack_url: input.modpack_url ?? null,
+      modpack_name: input.modpack_name ?? null,
+    } as never)
     .select()
     .single();
 

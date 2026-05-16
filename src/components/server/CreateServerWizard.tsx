@@ -1,5 +1,7 @@
 "use client";
 import { useState } from "react";
+import { Package } from "lucide-react";
+import { ModpackBrowser, type PickedModpack } from "@/components/server/ModpackBrowser";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion, AnimatePresence } from "motion/react";
@@ -88,6 +90,8 @@ export function CreateServerWizard() {
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [edition, setEdition] = useState<"java" | "bedrock">("java");
+  const [modpackOpen, setModpackOpen] = useState(false);
+  const [picked, setPicked] = useState<PickedModpack | null>(null);
   const { maxRamMb, maxDiskMb, maxCpuPercent, planName, planKey } = useFreeTierLimits();
 
   const form = useForm<CreateServerInput>({
@@ -115,10 +119,13 @@ export function CreateServerWizard() {
   async function onSubmit(data: CreateServerInput) {
     setLoading(true);
     try {
+      const payload = picked
+        ? { ...data, modpack_url: picked.download_url, modpack_name: picked.title }
+        : data;
       const res = await fetch("/api/servers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       });
       const result = await res.json();
       if (!res.ok) {
@@ -253,6 +260,49 @@ export function CreateServerWizard() {
                     );
                   })}
                 </div>
+              </div>
+
+              {/* Modpack browser entry */}
+              <div className="space-y-2">
+                <Label className="flex items-center justify-between">
+                  <span>Or install a modpack</span>
+                  <span className="text-[10px] text-muted-foreground font-normal">auto-fills version + loader</span>
+                </Label>
+                {picked ? (
+                  <div
+                    className="flex items-center gap-3 p-3 border-2 border-primary bg-primary/5"
+                    style={{ borderRadius: 0 }}
+                  >
+                    {picked.icon_url && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={picked.icon_url} alt="" className="w-10 h-10" style={{ imageRendering: "pixelated" }} />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-minecraft text-[11px] text-primary truncate">{picked.title}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        v{picked.version_number} · MC {picked.game_version} · {picked.loader}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPicked(null)}
+                      className="text-xs text-muted-foreground hover:text-destructive"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setModpackOpen(true)}
+                    className="w-full p-3 flex items-center gap-3 border-2 border-dashed border-border hover:border-primary/40 transition-colors"
+                    style={{ borderRadius: 0 }}
+                  >
+                    <Package className="w-5 h-5 text-primary" />
+                    <span className="text-sm flex-1 text-left">Browse Modrinth modpacks</span>
+                    <span className="text-[10px] text-muted-foreground font-minecraft uppercase">FTB Skies · ATM10 · Fabulously Optimized · ...</span>
+                  </button>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -456,6 +506,21 @@ export function CreateServerWizard() {
           )}
         </div>
       </form>
+
+      {modpackOpen && (
+        <ModpackBrowser
+          onPick={(mp) => {
+            setPicked(mp);
+            setEdition("java");
+            form.setValue("edition", "java");
+            form.setValue("loader", (mp.loader === "fabric" || mp.loader === "forge" || mp.loader === "neoforge" || mp.loader === "quilt" ? mp.loader : "fabric") as CreateServerInput["loader"]);
+            form.setValue("game_version", mp.game_version);
+            if (!form.getValues("name")) form.setValue("name", mp.title.slice(0, 32));
+            setModpackOpen(false);
+          }}
+          onClose={() => setModpackOpen(false)}
+        />
+      )}
     </div>
   );
 }

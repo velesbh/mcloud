@@ -15,6 +15,8 @@ export const createServerSchema = z.object({
   cpu_percent: z.number().int().min(10).max(400),
   motd: z.string().max(64).optional(),
   max_players: z.number().int().min(1).max(1000).optional(),
+  modpack_url: z.string().url().optional(),
+  modpack_name: z.string().max(120).optional(),
 });
 
 export const updateServerSchema = z.object({
@@ -24,6 +26,8 @@ export const updateServerSchema = z.object({
   ram_mb: z.number().int().min(512).optional(),
   cpu_percent: z.number().int().min(10).max(400).optional(),
   java_flags: z.string().max(500).optional(),
+  game_version: z.string().optional(),
+  loader: z.enum(["vanilla", "paper", "spigot", "fabric", "forge", "neoforge", "quilt", "bedrock"]).optional(),
 });
 
 export type CreateServerInput = z.infer<typeof createServerSchema>;
