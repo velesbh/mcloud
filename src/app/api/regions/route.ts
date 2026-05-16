@@ -17,10 +17,15 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
+  console.log("POST /api/regions - userId:", userId);
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await isAdmin())) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  const admin = await isAdmin();
+  console.log("POST /api/regions - isAdmin:", admin);
+  if (!admin) return NextResponse.json({ error: "Forbidden - not admin" }, { status: 403 });
 
   const body = await req.json();
+  console.log("POST /api/regions - body:", body);
   const supabase = createAdminSupabaseClient();
   const { data, error } = await supabase
     .from("regions")
@@ -28,6 +33,7 @@ export async function POST(req: NextRequest) {
     .select()
     .single();
 
+  console.log("POST /api/regions - insert result:", { data, error });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data, { status: 201 });
 }

@@ -30,22 +30,28 @@ export default function RegionsPage() {
   async function createRegion() {
     setSaving(true);
     try {
+      console.log("Creating region with form:", form);
       const res = await fetch("/api/regions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
+      console.log("Response status:", res.status, "ok:", res.ok);
       const data = await res.json();
+      console.log("Response data:", data);
       if (res.ok) {
-        qc.invalidateQueries({ queryKey: ["regions"] });
+        console.log("Region created, invalidating queries");
+        await qc.invalidateQueries({ queryKey: ["regions"] });
         toast.success("Region created");
         setOpen(false);
         setForm({ name: "", slug: "", description: "", flag_emoji: "🌐" });
       } else {
+        console.error("Region creation failed:", data);
         toast.error(data.error || "Failed to create region");
       }
     } catch (err) {
-      toast.error("Network error");
+      console.error("Region creation error:", err);
+      toast.error(err instanceof Error ? err.message : "Network error");
     } finally {
       setSaving(false);
     }
