@@ -33,8 +33,8 @@ export const config = {
 
   // Node registration details — used for upsert on startup
   nodeName: optional("NODE_NAME", os.hostname()),
-  nodeFqdn: optional("NODE_FQDN", os.hostname()),
   nodeIp: optional("NODE_IP", detectIp()),
+  get nodeFqdn() { return optional("NODE_FQDN", this.nodeIp); },
   nodeRegionId: process.env.NODE_REGION_ID ?? null,
   nodeTotalRamMb: parseInt(optional("NODE_TOTAL_RAM_MB", String(Math.floor(os.totalmem() / 1024 / 1024)))),
   nodeTotalCpu: parseInt(optional("NODE_TOTAL_CPU", String(os.cpus().length * 100))),

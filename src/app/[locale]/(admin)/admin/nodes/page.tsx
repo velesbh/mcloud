@@ -113,7 +113,6 @@ export default function NodesPage() {
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="font-semibold">{node.name}</p>
-                    <p className="text-xs text-muted-foreground font-mono">{node.fqdn}</p>
                     <p className="text-xs text-muted-foreground font-mono">{node.ip}</p>
                   </div>
                   <div className="flex items-center gap-1">
