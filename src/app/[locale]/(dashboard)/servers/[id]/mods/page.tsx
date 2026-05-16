@@ -6,27 +6,58 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { ModCard } from "@/components/modrinth/ModCard";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PageLoader } from "@/components/shared/LoadingScreen";
 import { toast } from "sonner";
 import type { ModrinthSearchResult } from "@/lib/modrinth/types";
-import type { ModInstallation } from "@/lib/supabase/types";
+import type { ModInstallation, Server } from "@/lib/supabase/types";
 import { MC_JAVA_VERSIONS, MODRINTH_PROJECT_TYPES } from "@/lib/constants";
 import { useDebounce } from "@/hooks/useDebounce";
 
-export default function ModsPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+/** Map our internal loader names → Modrinth category names */
+function toModrinthLoader(loader: string): string | null {
+  const map: Record<string, string> = {
+    paper: "paper",
+    spigot: "spigot",
+    fabric: "fabric",
+    forge: "forge",
+    neoforge: "neoforge",
+    quilt: "quilt",
+    purpur: "purpur",
+    vanilla: "",
+    bedrock: "",
+  };
+  return map[loader] ?? loader;
+}
+
+export default function ModsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const qc = useQueryClient();
   const [query, setQuery] = useState("");
   const [type, setType] = useState<string>("mod");
   const [version, setVersion] = useState<string>("1.21.4");
   const [installing, setInstalling] = useState<string | null>(null);
+  const [serverInitialized, setServerInitialized] = useState(false);
   const debouncedQuery = useDebounce(query, 400);
+
+  // Fetch server info to seed version + loader
+  const { data: server } = useQuery<Server>({
+    queryKey: ["server", id],
+    queryFn: () => fetch(`/api/servers/${id}`).then((r) => r.json()),
+    staleTime: 60_000,
+    select: (s) => {
+      if (!serverInitialized && s?.game_version) {
+        setVersion(s.game_version);
+        setServerInitialized(true);
+      }
+      return s;
+    },
+  });
+
+  const serverLoader = server?.loader ?? "paper";
+  const modrinthLoader = toModrinthLoader(serverLoader);
 
   const { data: installed = [], isLoading: loadingInstalled } = useQuery<ModInstallation[]>({
     queryKey: ["mods", id],
@@ -34,10 +65,11 @@ export default function ModsPage({
   });
 
   const { data: searchResult, isLoading: loadingSearch } = useQuery<ModrinthSearchResult>({
-    queryKey: ["modrinth-search", debouncedQuery, type, version],
+    queryKey: ["modrinth-search", debouncedQuery, type, version, modrinthLoader],
     queryFn: () => {
-      const params = new URLSearchParams({ query: debouncedQuery, type, version, limit: "20" });
-      return fetch(`/api/modrinth/search?${params}`).then((r) => r.json());
+      const p = new URLSearchParams({ query: debouncedQuery, type, version, limit: "20" });
+      if (modrinthLoader) p.set("loader", modrinthLoader);
+      return fetch(`/api/modrinth/search?${p}`).then((r) => r.json());
     },
     staleTime: 60_000,
   });
@@ -56,6 +88,7 @@ export default function ModsPage({
           name: project.title,
           iconUrl: project.icon_url,
           type: project.project_type,
+          loader: modrinthLoader || undefined,
           gameVersion: version,
         }),
       });
@@ -82,38 +115,47 @@ export default function ModsPage({
 
   return (
     <div className="space-y-4">
+      {/* Server context chip */}
+      {server && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge variant="secondary" className="gap-1 font-mono text-xs">
+            {server.edition === "java" ? "☕" : "📱"} {server.game_version}
+          </Badge>
+          <Badge variant="secondary" className="capitalize text-xs">{server.loader}</Badge>
+          <span className="text-xs text-muted-foreground">
+            Showing {modrinthLoader ? `${modrinthLoader}-compatible` : "all"} content
+          </span>
+        </div>
+      )}
+
       <Tabs defaultValue="browse">
         <div className="flex items-center gap-3 flex-wrap">
           <TabsList>
             <TabsTrigger value="browse">Browse</TabsTrigger>
-            <TabsTrigger value="installed">
-              Installed ({installed.length})
-            </TabsTrigger>
+            <TabsTrigger value="installed">Installed ({installed.length})</TabsTrigger>
           </TabsList>
 
           <div className="flex items-center gap-2 ml-auto flex-wrap">
+            {/* Content type selector */}
             <Select value={type} onValueChange={setType}>
               <SelectTrigger className="w-32 h-9">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {MODRINTH_PROJECT_TYPES.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.label}
-                  </SelectItem>
+                  <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
 
+            {/* MC version — editable so user can install older versions */}
             <Select value={version} onValueChange={setVersion}>
               <SelectTrigger className="w-32 h-9">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {MC_JAVA_VERSIONS.map((v) => (
-                  <SelectItem key={v} value={v}>
-                    {v}
-                  </SelectItem>
+                  <SelectItem key={v} value={v}>{v}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -125,7 +167,7 @@ export default function ModsPage({
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search Modrinth..."
+            placeholder={`Search Modrinth for ${serverLoader} mods...`}
             className="pl-9"
           />
         </div>
@@ -136,7 +178,7 @@ export default function ModsPage({
           ) : !searchResult?.hits?.length ? (
             <EmptyState
               title="No results"
-              description="Try a different search query or filter."
+              description={`No ${modrinthLoader ?? ""} content found for "${debouncedQuery || "your search"}". Try a different query or version.`}
               icon={<Package className="w-12 h-12 text-muted-foreground" />}
             />
           ) : (
@@ -167,7 +209,10 @@ export default function ModsPage({
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
               {installed.map((mod) => (
-                <div key={mod.id} className="flex items-center justify-between p-3 rounded-lg border border-border gap-3">
+                <div
+                  key={mod.id}
+                  className="flex items-center justify-between p-3 rounded-lg border border-border gap-3"
+                >
                   <div className="min-w-0">
                     <p className="font-medium text-sm truncate">{mod.name}</p>
                     <p className="text-xs text-muted-foreground capitalize">{mod.type}</p>

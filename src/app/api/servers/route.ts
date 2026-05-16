@@ -95,6 +95,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Pick a free allocation from the chosen node
+  const { data: allocation } = await adminSupabase
+    .from("allocations")
+    .select("id, ip, port")
+    .eq("node_id", pickedNodeId)
+    .is("server_id", null)
+    .limit(1)
+    .maybeSingle();
+
   const { data: server, error } = await adminSupabase
     .from("servers")
     .insert({
@@ -109,6 +118,7 @@ export async function POST(req: NextRequest) {
       disk_mb: input.disk_mb,
       region_id: input.region_id ?? null,
       node_id: pickedNodeId,
+      allocation_id: allocation?.id ?? null,
       motd: input.motd ?? "A Minecraft Server",
       max_players: input.max_players ?? 20,
       status: "offline",
@@ -116,6 +126,14 @@ export async function POST(req: NextRequest) {
     })
     .select()
     .single();
+
+  // Mark the allocation as taken
+  if (server && allocation) {
+    await adminSupabase
+      .from("allocations")
+      .update({ server_id: server.id, assigned_at: new Date().toISOString() })
+      .eq("id", allocation.id);
+  }
 
   if (error) {
     if (error.message.includes("SERVER_LIMIT_REACHED")) {

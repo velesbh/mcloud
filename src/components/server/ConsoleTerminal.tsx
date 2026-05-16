@@ -73,9 +73,31 @@ export function ConsoleTerminal({ serverId }: ConsoleTerminalProps) {
         }
       } catch {}
 
-      // Subscribe to realtime
-      const channel = supabase
-        .channel(`console-${serverId}`)
+      function colorLine(line: string, source: string) {
+        const color =
+          source === "user"   ? "\x1b[32m" :
+          source === "system" ? "\x1b[36m" :
+                                "\x1b[0m";
+        term.writeln(`${color}${line}\x1b[0m`);
+      }
+
+      // Subscribe to broadcast channel — daemon sends here directly
+      // (fast path, no DB round-trip required)
+      const broadcastChannel = supabase
+        .channel(`console:${serverId}`, {
+          config: { broadcast: { self: false } },
+        })
+        .on("broadcast", { event: "line" }, (msg) => {
+          const { line, source } = msg.payload as { line: string; source: string };
+          colorLine(line, source);
+        })
+        .subscribe((status) => {
+          if (status === "SUBSCRIBED") setConnected(true);
+        });
+
+      // Also subscribe to postgres_changes for cross-tab replay
+      const dbChannel = supabase
+        .channel(`console-db-${serverId}`)
         .on(
           "postgres_changes",
           {
@@ -86,13 +108,7 @@ export function ConsoleTerminal({ serverId }: ConsoleTerminalProps) {
           },
           (payload) => {
             const { line, source } = payload.new as { line: string; source: string };
-            const color =
-              source === "user"
-                ? "\x1b[32m"
-                : source === "system"
-                ? "\x1b[36m"
-                : "\x1b[0m";
-            term.writeln(`${color}${line}\x1b[0m`);
+            colorLine(line, source);
           }
         )
         .subscribe();
@@ -101,7 +117,8 @@ export function ConsoleTerminal({ serverId }: ConsoleTerminalProps) {
 
       return () => {
         observer.disconnect();
-        channel.unsubscribe();
+        broadcastChannel.unsubscribe();
+        dbChannel.unsubscribe();
         term.dispose();
       };
     }
