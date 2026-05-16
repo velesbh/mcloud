@@ -10,18 +10,37 @@ export async function GET() {
   if (!(await isAdmin())) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const supabase = createAdminSupabaseClient();
-  // Two FK paths exist between allocations↔servers (allocations.server_id and servers.allocation_id).
-  // Use the FK column name as the disambiguation hint instead of the constraint name.
+  // Don't embed servers — two FK paths exist (allocations.server_id and servers.allocation_id)
+  // and PostgREST refuses to pick one. Instead fetch server names in a separate query below.
   const { data, error } = await supabase
     .from("allocations")
-    .select("id, node_id, ip, local_ip, port, server_id, assigned_at, created_at, nodes!node_id(name), servers!server_id(name)")
+    .select("id, node_id, ip, local_ip, port, server_id, assigned_at, created_at, nodes!node_id(name)")
     .order("created_at", { ascending: false });
 
   if (error) {
     console.error("[allocations GET]", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json(data ?? []);
+
+  const rows = data ?? [];
+
+  // Fetch server names separately to avoid the ambiguous FK embed error
+  const serverIds = [...new Set(rows.map((r) => r.server_id).filter(Boolean))] as string[];
+  const serverNameMap = new Map<string, string>();
+  if (serverIds.length > 0) {
+    const { data: servers } = await supabase
+      .from("servers")
+      .select("id, name")
+      .in("id", serverIds);
+    for (const s of servers ?? []) serverNameMap.set(s.id, s.name);
+  }
+
+  const enriched = rows.map((r) => ({
+    ...r,
+    servers: r.server_id ? { name: serverNameMap.get(r.server_id) ?? null } : null,
+  }));
+
+  return NextResponse.json(enriched);
 }
 
 export async function POST(req: NextRequest) {
