@@ -43,7 +43,7 @@ export async function PATCH(
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("servers")
-    .update(parsed.data as Database["public"]["Tables"]["servers"]["Update"])
+    .update(parsed.data as Database["mcloud"]["Tables"]["servers"]["Update"])
     .eq("id", id)
     .select()
     .single();

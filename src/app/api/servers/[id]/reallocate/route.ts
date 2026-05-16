@@ -63,7 +63,7 @@ export async function POST(
     .limit(1)
     .single();
 
-  const updates: Database["public"]["Tables"]["servers"]["Update"] = {
+  const updates: Database["mcloud"]["Tables"]["servers"]["Update"] = {
     node_id: pickedNodeId,
     status: "offline",
     hibernated_at: null,
@@ -73,7 +73,7 @@ export async function POST(
     updates.allocation_id = alloc.id;
     await supabase
       .from("allocations")
-      .update({ server_id: id } as Database["public"]["Tables"]["allocations"]["Update"])
+      .update({ server_id: id } as Database["mcloud"]["Tables"]["allocations"]["Update"])
       .eq("id", alloc.id);
   }
 

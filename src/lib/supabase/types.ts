@@ -35,7 +35,11 @@ export type UserRole = "user" | "admin";
 export type GameEdition = "java" | "bedrock";
 
 export interface Database {
-  public: {
+  // All MCloud objects live in the `mcloud` Postgres schema (other apps
+  // share this project and have colliding names in `public`). The four
+  // Supabase clients are configured with { db: { schema: 'mcloud' } }
+  // so the JS layer's .from() / .rpc() calls resolve here automatically.
+  mcloud: {
     Tables: {
       profiles: {
         Row: {
@@ -524,14 +528,14 @@ export interface NodeStock {
   running_count: number;
 }
 
-export type Profile = Database["public"]["Tables"]["profiles"]["Row"];
-export type Region = Database["public"]["Tables"]["regions"]["Row"];
-export type Node = Database["public"]["Tables"]["nodes"]["Row"];
-export type Allocation = Database["public"]["Tables"]["allocations"]["Row"];
-export type Server = Database["public"]["Tables"]["servers"]["Row"];
-export type ServerBackup = Database["public"]["Tables"]["server_backups"]["Row"];
-export type ModInstallation = Database["public"]["Tables"]["mod_installations"]["Row"];
-export type ConsoleEvent = Database["public"]["Tables"]["console_events"]["Row"];
-export type ServerFile = Database["public"]["Tables"]["server_files"]["Row"];
-export type PublicIp = Database["public"]["Tables"]["public_ips"]["Row"];
-export type BillingPlan = Database["public"]["Tables"]["billing_plans"]["Row"];
+export type Profile = Database["mcloud"]["Tables"]["profiles"]["Row"];
+export type Region = Database["mcloud"]["Tables"]["regions"]["Row"];
+export type Node = Database["mcloud"]["Tables"]["nodes"]["Row"];
+export type Allocation = Database["mcloud"]["Tables"]["allocations"]["Row"];
+export type Server = Database["mcloud"]["Tables"]["servers"]["Row"];
+export type ServerBackup = Database["mcloud"]["Tables"]["server_backups"]["Row"];
+export type ModInstallation = Database["mcloud"]["Tables"]["mod_installations"]["Row"];
+export type ConsoleEvent = Database["mcloud"]["Tables"]["console_events"]["Row"];
+export type ServerFile = Database["mcloud"]["Tables"]["server_files"]["Row"];
+export type PublicIp = Database["mcloud"]["Tables"]["public_ips"]["Row"];
+export type BillingPlan = Database["mcloud"]["Tables"]["billing_plans"]["Row"];

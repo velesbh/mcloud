@@ -80,7 +80,7 @@ export function ConsoleTerminal({ serverId }: ConsoleTerminalProps) {
           "postgres_changes",
           {
             event: "INSERT",
-            schema: "public",
+            schema: "mcloud",
             table: "console_events",
             filter: `server_id=eq.${serverId}`,
           },
