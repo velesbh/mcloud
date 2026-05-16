@@ -20,15 +20,28 @@ interface Candidate {
 }
 
 async function fetchOurServers(): Promise<Candidate[]> {
-  // Use a left-join to user's plan; default plan_tier = 'free'
   const { data, error } = await supabase
     .from("servers")
-    .select("id, user_id, last_active_at, status, node_id, allocation_id, hibernated_at, profiles(plan_tier)")
+    .select("id, user_id, last_active_at, status, node_id, allocation_id, hibernated_at")
     .eq("node_id", config.nodeId);
   if (error) {
     log.error("hibernation: fetch failed", { error });
     return [];
   }
+
+  // Look up plan tiers in bulk (one extra query beats N+1)
+  const userIds = [...new Set((data ?? []).map((r: any) => r.user_id).filter(Boolean))];
+  const planMap: Record<string, string> = {};
+  if (userIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("clerk_user_id, plan_tier")
+      .in("clerk_user_id", userIds);
+    for (const p of profiles ?? []) {
+      planMap[p.clerk_user_id] = (p as any).plan_tier ?? "free";
+    }
+  }
+
   return (data ?? []).map((r: any) => ({
     id: r.id,
     user_id: r.user_id,
@@ -37,7 +50,7 @@ async function fetchOurServers(): Promise<Candidate[]> {
     node_id: r.node_id,
     allocation_id: r.allocation_id,
     hibernated_at: r.hibernated_at,
-    plan_tier: r.profiles?.plan_tier ?? "free",
+    plan_tier: planMap[r.user_id] ?? "free",
   }));
 }
 
