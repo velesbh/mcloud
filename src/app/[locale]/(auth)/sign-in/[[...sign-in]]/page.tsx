@@ -23,13 +23,6 @@ export default function SignInPage() {
   }
 
   return (
-    <SignIn
-      signUpUrl={`/${locale}/sign-up`}
-      appearance={{
-        elements: {
-          footerActionLink: "text-primary hover:text-primary/80",
-        },
-      }}
-    />
+    <SignIn signUpUrl={`/${locale}/sign-up`} />
   );
 }
