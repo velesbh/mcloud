@@ -2,12 +2,13 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
-import { Network, Trash2, AlertTriangle, Pencil } from "lucide-react";
+import { Network, Trash2, AlertTriangle, Pencil, Globe } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { PageLoader } from "@/components/shared/LoadingScreen";
@@ -22,6 +23,8 @@ export default function NodesPage() {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [assignTarget, setAssignTarget] = useState<Node | null>(null);
   const [assignRegion, setAssignRegion] = useState("");
+  const [overcommitTarget, setOvercommitTarget] = useState<Node | null>(null);
+  const [overcommitValue, setOvercommitValue] = useState(100);
   const [saving, setSaving] = useState(false);
 
   const { data: nodes = [], isLoading } = useQuery<(Node & { regions: any })[]>({
@@ -61,6 +64,30 @@ export default function NodesPage() {
         setAssignRegion("");
       } else {
         toast.error(data.error || "Failed to assign region");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveOvercommit() {
+    if (!overcommitTarget) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/nodes/${overcommitTarget.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ memory_overcommit_percent: overcommitValue }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        qc.invalidateQueries({ queryKey: ["nodes"] });
+        toast.success("Memory overcommit updated");
+        setOvercommitTarget(null);
+      } else {
+        toast.error(data.error || "Failed to update overcommit");
       }
     } catch {
       toast.error("Network error");
@@ -139,11 +166,18 @@ export default function NodesPage() {
                       );
                     })()}
                     <button
+                      onClick={() => { setOvercommitTarget(node); setOvercommitValue(node.memory_overcommit_percent ?? 100); }}
+                      className="p-1 text-muted-foreground hover:text-foreground transition-colors"
+                      title="Edit memory overcommit"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
                       onClick={() => { setAssignTarget(node); setAssignRegion(node.region_id ?? ""); }}
                       className="p-1 text-muted-foreground hover:text-foreground transition-colors"
                       title="Assign region"
                     >
-                      <Pencil className="w-3.5 h-3.5" />
+                      <Globe className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => setDeleteTarget(node.id)}
@@ -176,11 +210,45 @@ export default function NodesPage() {
                 <p className="text-xs text-muted-foreground">
                   {(node as any).used_allocations ?? 0} / {(node as any).total_allocations ?? 0} ports assigned
                 </p>
+                <p className="text-xs text-muted-foreground">
+                  Memory overcommit: {node.memory_overcommit_percent ?? 100}%
+                </p>
               </Card>
             </motion.div>
           ))}
         </div>
       )}
+
+      {/* Memory Overcommit Dialog */}
+      <Dialog open={!!overcommitTarget} onOpenChange={(o) => !o && setOvercommitTarget(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Memory Overcommit — {overcommitTarget?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
+              <Label>Memory overcommit %</Label>
+              <Input
+                type="number"
+                value={overcommitValue}
+                onChange={(e) => setOvercommitValue(parseInt(e.target.value) || 100)}
+                min={100}
+                max={500}
+                step={10}
+              />
+              <p className="text-xs text-muted-foreground">
+                100 = no overcommit, 150 = allow 50% more RAM than installed
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOvercommitTarget(null)}>Cancel</Button>
+            <Button onClick={saveOvercommit} disabled={saving}>
+              {saving ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Assign Region Dialog */}
       <Dialog open={!!assignTarget} onOpenChange={(o) => !o && setAssignTarget(null)}>

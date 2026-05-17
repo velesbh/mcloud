@@ -14,17 +14,21 @@ import {
   ArrowLeft,
   CreditCard,
   Boxes,
+  Settings,
+  LinkIcon,
 } from "lucide-react";
 
 const adminNav = [
-  { key: "overview",    href: "/admin",             icon: LayoutDashboard, label: "Overview", exact: true },
-  { key: "stock",       href: "/admin/stock",       icon: Boxes,           label: "Stock" },
-  { key: "servers",     href: "/admin/servers",     icon: Server,          label: "Servers" },
-  { key: "nodes",       href: "/admin/nodes",       icon: Network,         label: "Nodes" },
-  { key: "regions",     href: "/admin/regions",     icon: Globe,           label: "Regions" },
-  { key: "allocations", href: "/admin/allocations", icon: Layers,          label: "Allocations" },
-  { key: "users",       href: "/admin/users",       icon: Users,           label: "Users" },
-  { key: "billing",     href: "/admin/billing",     icon: CreditCard,      label: "Billing" },
+  { key: "overview",      href: "/admin",               icon: LayoutDashboard, label: "Overview", exact: true },
+  { key: "stock",         href: "/admin/stock",         icon: Boxes,           label: "Stock" },
+  { key: "servers",       href: "/admin/servers",       icon: Server,          label: "Servers" },
+  { key: "nodes",         href: "/admin/nodes",         icon: Network,         label: "Nodes" },
+  { key: "regions",       href: "/admin/regions",       icon: Globe,           label: "Regions" },
+  { key: "allocations",   href: "/admin/allocations",   icon: Layers,          label: "Allocations" },
+  { key: "users",         href: "/admin/users",         icon: Users,           label: "Users" },
+  { key: "invite-links",  href: "/admin/invite-links",  icon: LinkIcon,        label: "Invite Links" },
+  { key: "billing",       href: "/admin/billing",       icon: CreditCard,      label: "Billing" },
+  { key: "settings",      href: "/admin/settings",      icon: Settings,        label: "Settings" },
 ];
 
 export function AdminSidebar() {

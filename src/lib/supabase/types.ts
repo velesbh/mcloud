@@ -499,6 +499,65 @@ export interface Database {
         };
         Relationships: [];
       };
+      admin_settings: {
+        Row: {
+          key: string;
+          value: Json;
+          updated_at: string;
+        };
+        Insert: {
+          key: string;
+          value: Json;
+          updated_at?: string;
+        };
+        Update: {
+          key?: string;
+          value?: Json;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      invite_links: {
+        Row: {
+          id: string;
+          code: string;
+          created_by: string;
+          max_uses: number;
+          uses: number;
+          max_servers: number;
+          max_ram_mb: number;
+          max_disk_mb: number;
+          max_cpu_percent: number;
+          expires_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          code?: string;
+          created_by: string;
+          max_uses?: number;
+          uses?: number;
+          max_servers?: number;
+          max_ram_mb?: number;
+          max_disk_mb?: number;
+          max_cpu_percent?: number;
+          expires_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          code?: string;
+          created_by?: string;
+          max_uses?: number;
+          uses?: number;
+          max_servers?: number;
+          max_ram_mb?: number;
+          max_disk_mb?: number;
+          max_cpu_percent?: number;
+          expires_at?: string | null;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -554,3 +613,4 @@ export type ConsoleEvent = Database["mcloud"]["Tables"]["console_events"]["Row"]
 export type ServerFile = Database["mcloud"]["Tables"]["server_files"]["Row"];
 export type PublicIp = Database["mcloud"]["Tables"]["public_ips"]["Row"];
 export type BillingPlan = Database["mcloud"]["Tables"]["billing_plans"]["Row"];
+export type InviteLink = Database["mcloud"]["Tables"]["invite_links"]["Row"];

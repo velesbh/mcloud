@@ -71,6 +71,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "cpuExceedsPlan", quotas }, { status: 403 });
   }
 
+  // ─── Premium allocation guard ─────────────────────────────────────
+  // Read the global premium_allocation_percent setting. If the user is
+  // on the free tier (plan_key === null) we must ensure we don't give
+  // them resources that are reserved for premium users.
+  const isPremium = quotas.plan_key !== null;
+
+  let premiumReservePercent = 0;
+  if (!isPremium) {
+    const { data: settingRow } = await adminSupabase
+      .from("admin_settings")
+      .select("value")
+      .eq("key", "premium_allocation_percent")
+      .maybeSingle();
+    premiumReservePercent = settingRow ? Number(settingRow.value) : 0;
+  }
+
   // ─── Stock check ──────────────────────────────────────────────────
   // Ask the DB which node (if any) can fit this server, given current
   // allocations and the per-node `overallocation_percent` setting.
@@ -93,6 +109,52 @@ export async function POST(req: NextRequest) {
       { error: "outOfStock", message: "No node has enough free capacity right now. Try a different region or a smaller server." },
       { status: 503 }
     );
+  }
+
+  // ─── Premium reservation check (free users only) ──────────────────
+  // After picking a node, verify the allocation would not eat into the
+  // premium-reserved portion of that node's capacity.
+  if (!isPremium && premiumReservePercent > 0) {
+    const { data: node } = await adminSupabase
+      .from("nodes")
+      .select("total_ram_mb, total_cpu, total_disk_mb, overallocation_percent")
+      .eq("id", pickedNodeId)
+      .single();
+
+    const { data: nodeServers } = await adminSupabase
+      .from("servers")
+      .select("ram_mb, cpu_percent, disk_mb")
+      .eq("node_id", pickedNodeId);
+
+    if (node) {
+      const overPct = 1 + (node.overallocation_percent ?? 0) / 100;
+      const capacityRam = Math.floor(node.total_ram_mb * overPct);
+      const capacityCpu = Math.floor(node.total_cpu * overPct);
+      const capacityDisk = Math.floor(node.total_disk_mb * overPct);
+
+      const usedRam = (nodeServers ?? []).reduce((s, srv) => s + srv.ram_mb, 0);
+      const usedCpu = (nodeServers ?? []).reduce((s, srv) => s + srv.cpu_percent, 0);
+      const usedDisk = (nodeServers ?? []).reduce((s, srv) => s + srv.disk_mb, 0);
+
+      const reserveFraction = premiumReservePercent / 100;
+      const freeableRam = capacityRam - usedRam - input.ram_mb;
+      const freeableCpu = capacityCpu - usedCpu - input.cpu_percent;
+      const freeableDisk = capacityDisk - usedDisk - input.disk_mb;
+
+      const minFreeRam = Math.floor(capacityRam * reserveFraction);
+      const minFreeCpu = Math.floor(capacityCpu * reserveFraction);
+      const minFreeDisk = Math.floor(capacityDisk * reserveFraction);
+
+      if (freeableRam < minFreeRam || freeableCpu < minFreeCpu || freeableDisk < minFreeDisk) {
+        return NextResponse.json(
+          {
+            error: "premiumReserved",
+            message: `This node's remaining capacity is reserved for premium users. Upgrade your plan or choose fewer resources.`,
+          },
+          { status: 503 }
+        );
+      }
+    }
   }
 
   // Pick a free allocation from the chosen node — admin must add them manually

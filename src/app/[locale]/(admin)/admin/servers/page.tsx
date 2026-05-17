@@ -1,7 +1,9 @@
 "use client";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Play, Square, RotateCcw, Zap, ArrowRightLeft, WifiOff } from "lucide-react";
+import { Play, Square, RotateCcw, Zap, ArrowRightLeft, WifiOff, Upload } from "lucide-react";
+import Link from "next/link";
+import { useLocale } from "next-intl";
 import { PageLoader } from "@/components/shared/LoadingScreen";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -32,6 +34,7 @@ function NodeOfflineBanner({ count }: { count: number }) {
 
 export default function AdminServersPage() {
   const qc = useQueryClient();
+  const locale = useLocale();
   const [migrateTarget, setMigrateTarget] = useState<Server | null>(null);
   const [targetNode, setTargetNode] = useState("");
   const [migrating, setMigrating] = useState(false);
@@ -109,7 +112,18 @@ export default function AdminServersPage() {
   return (
     <TooltipProvider>
       <div className="space-y-4">
-        <PageHeader title="All Servers" description={`${servers.length} total servers`} />
+        <PageHeader
+          title="All Servers"
+          description={`${servers.length} total servers`}
+          action={
+            <Link href={`/${locale}/admin/servers/import`}>
+              <Button className="gap-2" size="sm">
+                <Upload className="w-4 h-4" />
+                Import Server
+              </Button>
+            </Link>
+          }
+        />
 
         <NodeOfflineBanner count={offlineNodeCount} />
 

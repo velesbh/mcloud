@@ -1,7 +1,7 @@
 "use client";
 import { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -22,12 +22,20 @@ const DEFAULT_LOCAL_IP = "0.0.0.0";
 export default function AllocationsPage() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [rangeOpen, setRangeOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     node_id: "",
     ip: "",
     port: 25565,
+    local_ip: DEFAULT_LOCAL_IP,
+  });
+  const [rangeForm, setRangeForm] = useState({
+    node_id: "",
+    ip: "",
+    port_from: 25565,
+    port_to: 25600,
     local_ip: DEFAULT_LOCAL_IP,
   });
 
@@ -69,6 +77,10 @@ export default function AllocationsPage() {
     setForm({ node_id: "", ip: "", port: 25565, local_ip: DEFAULT_LOCAL_IP });
   }
 
+  function resetRangeForm() {
+    setRangeForm({ node_id: "", ip: "", port_from: 25565, port_to: 25600, local_ip: DEFAULT_LOCAL_IP });
+  }
+
   async function createAllocation() {
     setSaving(true);
     try {
@@ -91,6 +103,35 @@ export default function AllocationsPage() {
     }
   }
 
+  async function createPortRange() {
+    const count = rangeForm.port_to - rangeForm.port_from + 1;
+    if (count <= 0) {
+      toast.error("Port range is invalid");
+      return;
+    }
+    setSaving(true);
+    const toastId = toast.loading(`Creating ${count} allocations...`);
+    try {
+      const res = await fetch("/api/allocations/batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(rangeForm),
+      });
+      if (res.ok) {
+        const { created } = await res.json();
+        toast.success(`Created ${created} allocations`, { id: toastId });
+        qc.invalidateQueries({ queryKey: ["allocations"] });
+        setRangeOpen(false);
+        resetRangeForm();
+      } else {
+        const err = await res.json();
+        toast.error(err.error ?? "Failed to create allocations", { id: toastId });
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function deleteAllocation(id: string) {
     await fetch(`/api/allocations/${id}`, { method: "DELETE" });
     qc.invalidateQueries({ queryKey: ["allocations"] });
@@ -105,10 +146,16 @@ export default function AllocationsPage() {
         title="Allocations"
         description="IP:port pairs available for server assignment, grouped by node."
         action={
-          <Button onClick={() => setOpen(true)} className="gap-2">
-            <Plus className="w-4 h-4" />
-            Add Allocation
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setRangeOpen(true)} className="gap-2">
+              <Layers className="w-4 h-4" />
+              Add Port Range
+            </Button>
+            <Button onClick={() => setOpen(true)} className="gap-2">
+              <Plus className="w-4 h-4" />
+              Add Allocation
+            </Button>
+          </div>
         }
       />
 
@@ -245,6 +292,99 @@ export default function AllocationsPage() {
             >
               {saving && <LoadingSpinner size={12} />}
               Add
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Port Range Dialog */}
+      <Dialog open={rangeOpen} onOpenChange={(o) => { setRangeOpen(o); if (!o) resetRangeForm(); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add Port Range</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <div className="space-y-1">
+              <Label>Node</Label>
+              <Select
+                value={rangeForm.node_id}
+                onValueChange={(v) => setRangeForm({ ...rangeForm, node_id: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select node" />
+                </SelectTrigger>
+                <SelectContent>
+                  {nodes.map((n) => (
+                    <SelectItem key={n.id} value={n.id}>
+                      {n.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label>Public IP</Label>
+              <Input
+                value={rangeForm.ip}
+                onChange={(e) => setRangeForm({ ...rangeForm, ip: e.target.value })}
+                placeholder="203.0.113.1"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Port From</Label>
+                <Input
+                  type="number"
+                  value={rangeForm.port_from}
+                  onChange={(e) =>
+                    setRangeForm({ ...rangeForm, port_from: parseInt(e.target.value) || 25565 })
+                  }
+                  min={1024}
+                  max={65535}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Port To</Label>
+                <Input
+                  type="number"
+                  value={rangeForm.port_to}
+                  onChange={(e) =>
+                    setRangeForm({ ...rangeForm, port_to: parseInt(e.target.value) || 25600 })
+                  }
+                  min={1024}
+                  max={65535}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label>Local IP (bind address)</Label>
+              <Input
+                value={rangeForm.local_ip}
+                onChange={(e) => setRangeForm({ ...rangeForm, local_ip: e.target.value })}
+                placeholder={DEFAULT_LOCAL_IP}
+              />
+            </div>
+
+            {rangeForm.port_to >= rangeForm.port_from && (
+              <p className="text-xs text-muted-foreground">
+                This will create <span className="font-medium text-foreground">{rangeForm.port_to - rangeForm.port_from + 1}</span> allocation(s).
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setRangeOpen(false); resetRangeForm(); }}>
+              Cancel
+            </Button>
+            <Button
+              onClick={createPortRange}
+              disabled={saving || !rangeForm.node_id || !rangeForm.ip || rangeForm.port_to < rangeForm.port_from}
+              className="gap-2"
+            >
+              {saving && <LoadingSpinner size={12} />}
+              Create Range
             </Button>
           </DialogFooter>
         </DialogContent>
