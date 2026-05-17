@@ -150,7 +150,7 @@ export async function startServer(serverId: string) {
   // Use the column-name hint (!allocation_id) which references the FK on the servers side.
   const { data: srv, error } = await supabase
     .from("servers")
-    .select("id, name, edition, game_version, loader, ram_mb, max_players, motd, allocation_id, modpack_url, modpack_installed, allocations!allocation_id(local_ip, port)")
+    .select("id, name, edition, game_version, loader, ram_mb, max_players, motd, allocation_id, modpack_url, modpack_installed, env_vars, allocations!allocation_id(local_ip, port)")
     .eq("id", serverId)
     .single();
 
@@ -209,17 +209,27 @@ export async function startServer(serverId: string) {
     cmd = config.bedrockBin;
     args = [];
   } else {
-    // Auto-download the jar if missing
+    // Resolve JAR: use custom jar from env_vars if set, otherwise auto-download
+    const envVars = (srv.env_vars as Record<string, unknown> | null) ?? {};
+    const customJar = typeof envVars.startup_jar === "string" && envVars.startup_jar.trim()
+      ? envVars.startup_jar.trim()
+      : null;
+
     let jar: string;
-    try {
-      await broadcastConsole(serverId, `> Fetching ${srv.loader} ${srv.game_version} jar...`, "system");
-      jar = await ensureJar(srv.loader, srv.game_version);
-    } catch (err) {
-      const msg = `[error] Failed to download server jar: ${String(err)}`;
-      log.error("jar download failed", { serverId, err });
-      await broadcastConsole(serverId, msg, "system");
-      await setStatus(serverId, "error");
-      return;
+    if (customJar) {
+      jar = path.join(dir, customJar);
+      await broadcastConsole(serverId, `> Using custom jar: ${customJar}`, "system");
+    } else {
+      try {
+        await broadcastConsole(serverId, `> Fetching ${srv.loader} ${srv.game_version} jar...`, "system");
+        jar = await ensureJar(srv.loader, srv.game_version);
+      } catch (err) {
+        const msg = `[error] Failed to download server jar: ${String(err)}`;
+        log.error("jar download failed", { serverId, err });
+        await broadcastConsole(serverId, msg, "system");
+        await setStatus(serverId, "error");
+        return;
+      }
     }
 
     cmd = config.javaBin;
