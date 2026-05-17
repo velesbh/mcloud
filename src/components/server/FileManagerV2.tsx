@@ -160,6 +160,42 @@ export function FileManagerV2({ serverId }: { serverId: string }) {
     setBusy(`Uploading ${files.length} file${files.length > 1 ? "s" : ""}...`);
     try {
       for (const file of Array.from(files)) {
+        // For files > 4 MB try the presigned S3 URL path to bypass Vercel's body limit.
+        // Fall back to multipart upload if S3 isn't configured (409 response).
+        if (file.size > 4 * 1024 * 1024) {
+          const presignRes = await fetch(
+            `/api/servers/${serverId}/fs?filename=${encodeURIComponent(file.name)}`
+          );
+          if (presignRes.ok) {
+            const { uploadUrl, downloadUrl } = await presignRes.json() as {
+              uploadUrl: string; downloadUrl: string; storageKey: string;
+            };
+            // Upload directly to S3 — no Vercel size limit
+            const s3Res = await fetch(uploadUrl, {
+              method: "PUT",
+              body: file,
+              headers: { "Content-Type": file.type || "application/octet-stream" },
+            });
+            if (!s3Res.ok) throw new Error(`S3 upload failed: ${s3Res.status}`);
+            // Tell daemon to pull from S3
+            const importRes = await fetch(`/api/servers/${serverId}/fs`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                op: "import-url",
+                url: downloadUrl,
+                targetPath: cwd.replace(/\/+$/, "") + "/" + file.name.replace(/[^\w.\-]/g, "_"),
+              }),
+            });
+            if (!importRes.ok) {
+              const err = await importRes.json().catch(() => ({ error: importRes.statusText }));
+              throw new Error(err.error ?? "Import failed");
+            }
+            continue;
+          }
+          // S3 not configured — fall through to multipart
+        }
+
         const fd = new FormData();
         fd.append("file", file);
         fd.append("targetDir", cwd);
@@ -201,16 +237,30 @@ export function FileManagerV2({ serverId }: { serverId: string }) {
   async function handleExport(item: FsItem) {
     setBusy(`Preparing ${item.name}${item.is_directory ? " (zipping)" : ""}...`);
     try {
-      const data = await callFs(serverId, "export", { path: item.path });
-      if (data.url) {
-        const a = document.createElement("a");
-        a.href = data.url as string;
-        a.download = (data.filename as string) || item.name;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        toast.success(`Downloading ${data.filename}`);
+      // The fs POST /export route now reads bytes from daemon and streams
+      // them directly — no S3/Supabase involved, no bucket-not-found errors.
+      const res = await fetch(`/api/servers/${serverId}/fs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "export", path: item.path }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(err.error ?? "Download failed");
       }
+      const blob = await res.blob();
+      const contentDisposition = res.headers.get("Content-Disposition") ?? "";
+      const match = contentDisposition.match(/filename="([^"]+)"/);
+      const filename = match?.[1] || item.name + (item.is_directory ? ".zip" : "");
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success(`Downloaded ${filename}`);
     } catch (e) {
       toast.error((e as Error).message);
     } finally {

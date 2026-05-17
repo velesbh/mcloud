@@ -93,6 +93,41 @@ async function readText(serverId: string, opId: string, relPath: string) {
   await emit(serverId, opId, "read-result", { path: relPath, content });
 }
 
+/**
+ * Read a file (or zip a directory) and return its bytes as base64 so the
+ * main app can stream it directly to the browser — no storage involved.
+ * Limited to 50 MB to avoid Realtime message overflow.
+ */
+async function readBase64(serverId: string, opId: string, relPath: string) {
+  const abs = resolveServerPath(serverId, relPath);
+  const s = await stat(abs);
+  const name = path.basename(abs);
+
+  let buf: Buffer;
+  let filename: string;
+
+  if (s.isDirectory()) {
+    const zip = new AdmZip();
+    zip.addLocalFolder(abs);
+    buf = zip.toBuffer();
+    filename = `${name}.zip`;
+  } else {
+    if (s.size > 50 * 1024 * 1024) {
+      await emit(serverId, opId, "read-result", { path: relPath, error: "fileTooLarge" });
+      return;
+    }
+    buf = await readFile(abs);
+    filename = name;
+  }
+
+  await emit(serverId, opId, "read-result", {
+    path: relPath,
+    content: buf.toString("base64"),
+    filename,
+    size: buf.length,
+  });
+}
+
 async function writeText(serverId: string, opId: string, relPath: string, content: string) {
   const abs = resolveServerPath(serverId, relPath);
   await mkdir(path.dirname(abs), { recursive: true });
@@ -331,6 +366,9 @@ export async function handleFileOp(req: FileOpRequest) {
         break;
       case "read":
         await readText(serverId, opId, req.path as string);
+        break;
+      case "read-base64":
+        await readBase64(serverId, opId, req.path as string);
         break;
       case "write":
         await writeText(serverId, opId, req.path as string, req.content as string);
