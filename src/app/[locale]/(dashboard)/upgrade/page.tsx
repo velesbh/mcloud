@@ -104,12 +104,19 @@ export default function UpgradePage() {
       }
     } catch (err) {
       const msg = String(err);
-      if (msg.includes("not Publicly available") || msg.includes("publicly available")) {
-        toast.error(
-          "This plan is set to Private in Clerk. Go to your Clerk Dashboard → Billing → Plans → make the plan Public. " +
-          "The plan won't appear in checkout until it's Public in Clerk (hiding it from users is done via MCloud's is_visible setting instead).",
-          { duration: 10_000 }
+      if (msg.toLowerCase().includes("not publicly available") || msg.toLowerCase().includes("publicly available")) {
+        // Plan is Private in Clerk — open the user's billing profile page as a fallback.
+        // From there they can manage existing subscriptions. For new subscriptions the
+        // admin must set the plan to Public in Clerk (Billing → Plans → Public). MCloud's
+        // own is_visible flag controls whether it shows here; the Clerk "Public" setting
+        // only gates the checkout API.
+        toast.info(
+          "This plan requires a direct link from your admin. Opening your billing portal…",
+          { duration: 4_000 }
         );
+        setTimeout(() => {
+          clerk.openUserProfile({ __experimental_startPath: "/billing" } as never);
+        }, 500);
       } else {
         toast.error(`Checkout failed: ${msg}`);
       }

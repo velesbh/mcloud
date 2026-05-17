@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Star, Link2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Star, Link2, Info } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { PageLoader } from "@/components/shared/LoadingScreen";
@@ -166,6 +166,29 @@ export default function AdminBillingPage() {
           </Button>
         }
       />
+
+      {/* Clerk "Public" vs MCloud is_visible explanation */}
+      <div className="flex gap-3 rounded-md border border-blue-500/30 bg-blue-500/10 p-4 text-sm">
+        <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+        <div className="space-y-1 text-muted-foreground">
+          <p className="font-medium text-foreground">Two separate visibility controls</p>
+          <p>
+            <span className="text-foreground font-mono">Clerk Dashboard → Billing → Plans → Public</span>
+            {" "}— must be <strong>Public</strong> for self-service checkout to work. This does NOT expose
+            the plan in any Clerk pricing table unless you render Clerk&apos;s{" "}
+            <code className="text-xs">&lt;PricingTable /&gt;</code> component (MCloud doesn&apos;t).
+          </p>
+          <p>
+            <span className="text-foreground font-mono">is_visible</span> (below)
+            {" "}— controls whether the plan shows on MCloud&apos;s <code className="text-xs">/upgrade</code> page.
+            Set to <strong>Hidden</strong> + share the secret link (🔗) for invite-only plans.
+          </p>
+          <p className="text-xs">
+            TL;DR: set every plan to <strong>Public in Clerk</strong>, then use <strong>Hidden here</strong> to
+            keep it off the public upgrade page.
+          </p>
+        </div>
+      </div>
 
       <Card>
         <Table>
