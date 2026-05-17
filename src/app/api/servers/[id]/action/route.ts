@@ -28,7 +28,7 @@ export async function POST(
 
   const { data: server } = await admin
     .from("servers")
-    .select("id, clerk_user_id, status, node_id")
+    .select("id, clerk_user_id, status, node_id, allocation_id")
     .eq("id", id)
     .single();
 
