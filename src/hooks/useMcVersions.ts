@@ -1,14 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 
-export function useMcVersions() {
+export function useMcVersions(loader = "paper") {
   return useQuery<string[]>({
-    queryKey: ["mc-versions"],
+    queryKey: ["mc-versions", loader],
     queryFn: async () => {
-      const res = await fetch("/api/mc-versions");
+      const res = await fetch(`/api/mc-versions?loader=${encodeURIComponent(loader)}`);
       const data = await res.json();
       return data.versions as string[];
     },
-    staleTime: 60 * 60 * 1000, // 1 hour
-    gcTime: 2 * 60 * 60 * 1000,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
   });
 }

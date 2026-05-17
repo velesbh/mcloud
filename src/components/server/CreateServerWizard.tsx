@@ -134,9 +134,21 @@ export function CreateServerWizard() {
     queryFn: () => fetch("/api/regions").then((r) => r.json()),
   });
 
-  const { data: javaVersions = [] } = useMcVersions();
+  const watchedLoader = form.watch("loader");
+  const { data: javaVersions = [], isLoading: versionsLoading } = useMcVersions(
+    edition === "java" ? watchedLoader : "vanilla"
+  );
   const versions = edition === "java" ? javaVersions : MC_BEDROCK_VERSIONS;
   const loaders = edition === "java" ? JAVA_LOADERS : BEDROCK_LOADERS;
+
+  // When loader changes and current version isn't in the new list, pick the first available
+  useEffect(() => {
+    if (edition !== "java" || javaVersions.length === 0) return;
+    const cur = form.getValues("game_version");
+    if (!javaVersions.includes(cur)) {
+      form.setValue("game_version", javaVersions[0], { shouldValidate: false });
+    }
+  }, [javaVersions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function onSubmit(data: CreateServerInput) {
     setLoading(true);
@@ -386,11 +398,12 @@ export function CreateServerWizard() {
               <div className="space-y-2">
                 <Label>Minecraft Version</Label>
                 <Select
-                  defaultValue={form.getValues("game_version")}
+                  value={form.watch("game_version")}
                   onValueChange={(v) => form.setValue("game_version", v)}
+                  disabled={versionsLoading}
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder={versionsLoading ? "Loading…" : "Select version"} />
                   </SelectTrigger>
                   <SelectContent>
                     {versions.map((v) => (

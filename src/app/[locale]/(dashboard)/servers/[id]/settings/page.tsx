@@ -33,7 +33,7 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
     startup_jar: "", java_version: "21",
   });
 
-  const { data: mcVersions = [] } = useMcVersions();
+  const { data: mcVersions = [] } = useMcVersions(form.loader);
 
   const { data: server, isLoading, error: serverError } = useQuery({
     queryKey: ["server", id],
