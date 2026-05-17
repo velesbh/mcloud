@@ -3,7 +3,7 @@ import { useState, useRef, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useLocale } from "next-intl";
-import { Upload, FileArchive, CheckCircle2, AlertCircle } from "lucide-react";
+import { Upload, FileArchive, CheckCircle2, AlertCircle, FolderOpen, Archive } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Card } from "@/components/ui/card";
@@ -17,11 +17,13 @@ import { formatMb } from "@/lib/utils";
 import type { Node } from "@/lib/supabase/types";
 
 type ImportStatus = "idle" | "uploading" | "installing" | "done" | "error";
+type SourceType = "zip" | "dir";
 
 export default function AdminImportServerPage() {
   const router = useRouter();
   const locale = useLocale();
 
+  const [sourceType, setSourceType] = useState<SourceType>("zip");
   const [name, setName] = useState("");
   const [ownerClerkUserId, setOwnerClerkUserId] = useState("");
   const [nodeId, setNodeId] = useState("");
@@ -29,6 +31,7 @@ export default function AdminImportServerPage() {
   const [diskMb, setDiskMb] = useState(10240);
   const [cpuPercent, setCpuPercent] = useState(100);
   const [file, setFile] = useState<File | null>(null);
+  const [sourcePath, setSourcePath] = useState("");
   const [dragging, setDragging] = useState(false);
   const [status, setStatus] = useState<ImportStatus>("idle");
   const [errorMsg, setErrorMsg] = useState("");
@@ -59,22 +62,32 @@ export default function AdminImportServerPage() {
   // ── Submit ─────────────────────────────────────────────────────────
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!file || !nodeId || !name.trim() || !ownerClerkUserId.trim()) {
-      toast.error("Fill in all required fields and select a ZIP file");
+    if (!nodeId || !name.trim() || !ownerClerkUserId.trim()) {
+      toast.error("Fill in all required fields");
+      return;
+    }
+    if (sourceType === "zip" && !file) {
+      toast.error("Select a ZIP file to upload");
+      return;
+    }
+    if (sourceType === "dir" && !sourcePath.trim()) {
+      toast.error("Enter the absolute path on the node");
       return;
     }
 
-    setStatus("uploading");
+    setStatus(sourceType === "zip" ? "uploading" : "installing");
     setErrorMsg("");
 
     const fd = new FormData();
-    fd.append("file", file);
+    fd.append("source_type", sourceType);
     fd.append("node_id", nodeId);
     fd.append("name", name.trim());
     fd.append("ram_mb", String(ramMb));
     fd.append("disk_mb", String(diskMb));
     fd.append("cpu_percent", String(cpuPercent));
     fd.append("owner_clerk_user_id", ownerClerkUserId.trim());
+    if (sourceType === "zip" && file) fd.append("file", file);
+    if (sourceType === "dir") fd.append("source_path", sourcePath.trim());
 
     setStatus("installing");
 
@@ -105,12 +118,14 @@ export default function AdminImportServerPage() {
   }
 
   const isSubmitting = status === "uploading" || status === "installing";
+  const canSubmit = !isSubmitting && status !== "done" && !!nodeId && !!name && !!ownerClerkUserId &&
+    (sourceType === "zip" ? !!file : !!sourcePath.trim());
 
   return (
     <div className="space-y-6 max-w-2xl">
       <PageHeader
-        title="Import Server from ZIP"
-        description="Upload a ZIP archive of an existing Minecraft server and register it on a node."
+        title="Import Server"
+        description="Register an existing Minecraft server on a node from a ZIP archive or a directory already on the node."
       />
 
       {status === "done" && (
@@ -215,55 +230,104 @@ export default function AdminImportServerPage() {
           </div>
         </Card>
 
-        {/* ── ZIP Dropzone ──────────────────────────────────────────── */}
-        <Card className="p-6">
-          <h3 className="text-sm font-semibold mb-3">ZIP Archive <span className="text-destructive">*</span></h3>
-
-          <div
-            className={`relative flex flex-col items-center justify-center gap-3 border-2 border-dashed rounded-lg px-6 py-10 transition-colors cursor-pointer
-              ${dragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/50 hover:bg-foreground/2"}
-              ${isSubmitting ? "pointer-events-none opacity-60" : ""}`}
-            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={onDrop}
-            onClick={() => !isSubmitting && fileInputRef.current?.click()}
+        {/* ── Source type toggle ────────────────────────────────────── */}
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setSourceType("zip")}
+            disabled={isSubmitting}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors
+              ${sourceType === "zip"
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border text-muted-foreground hover:border-primary/40"}`}
           >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".zip"
-              className="hidden"
-              onChange={onFileChange}
-              disabled={isSubmitting}
-            />
+            <Archive className="w-4 h-4" />
+            Upload ZIP
+          </button>
+          <button
+            type="button"
+            onClick={() => setSourceType("dir")}
+            disabled={isSubmitting}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors
+              ${sourceType === "dir"
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border text-muted-foreground hover:border-primary/40"}`}
+          >
+            <FolderOpen className="w-4 h-4" />
+            Node Directory
+          </button>
+        </div>
 
-            {file ? (
-              <>
-                <FileArchive className="w-10 h-10 text-primary" />
-                <div className="text-center">
-                  <p className="text-sm font-medium">{file.name}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {(file.size / 1024 / 1024).toFixed(1)} MB — click or drop to replace
-                  </p>
-                </div>
-              </>
-            ) : (
-              <>
-                <Upload className="w-10 h-10 text-muted-foreground" />
-                <div className="text-center">
-                  <p className="text-sm font-medium">Drop a ZIP file here</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">or click to browse</p>
-                </div>
-              </>
-            )}
-          </div>
-        </Card>
+        {/* ── ZIP Dropzone ──────────────────────────────────────────── */}
+        {sourceType === "zip" && (
+          <Card className="p-6">
+            <h3 className="text-sm font-semibold mb-3">ZIP Archive <span className="text-destructive">*</span></h3>
+
+            <div
+              className={`relative flex flex-col items-center justify-center gap-3 border-2 border-dashed rounded-lg px-6 py-10 transition-colors cursor-pointer
+                ${dragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/50 hover:bg-foreground/2"}
+                ${isSubmitting ? "pointer-events-none opacity-60" : ""}`}
+              onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={onDrop}
+              onClick={() => !isSubmitting && fileInputRef.current?.click()}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".zip"
+                className="hidden"
+                onChange={onFileChange}
+                disabled={isSubmitting}
+              />
+
+              {file ? (
+                <>
+                  <FileArchive className="w-10 h-10 text-primary" />
+                  <div className="text-center">
+                    <p className="text-sm font-medium">{file.name}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {(file.size / 1024 / 1024).toFixed(1)} MB — click or drop to replace
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Upload className="w-10 h-10 text-muted-foreground" />
+                  <div className="text-center">
+                    <p className="text-sm font-medium">Drop a ZIP file here</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">or click to browse</p>
+                  </div>
+                </>
+              )}
+            </div>
+          </Card>
+        )}
+
+        {/* ── Node directory path ───────────────────────────────────── */}
+        {sourceType === "dir" && (
+          <Card className="p-6 space-y-3">
+            <h3 className="text-sm font-semibold">Node Directory Path <span className="text-destructive">*</span></h3>
+            <div className="space-y-1">
+              <Input
+                placeholder="/opt/minecraft/my-server"
+                value={sourcePath}
+                onChange={(e) => setSourcePath(e.target.value)}
+                disabled={isSubmitting}
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                Absolute path to the server directory on the <strong>target node</strong>. The daemon will copy its contents into the new server.
+              </p>
+            </div>
+          </Card>
+        )}
 
         {/* ── Progress / Submit ─────────────────────────────────────── */}
         <div className="flex items-center gap-3">
           <Button
             type="submit"
-            disabled={isSubmitting || status === "done" || !file || !nodeId || !name || !ownerClerkUserId}
+            disabled={!canSubmit}
             className="gap-2 min-w-32"
           >
             {isSubmitting && <LoadingSpinner size={14} />}
@@ -278,7 +342,9 @@ export default function AdminImportServerPage() {
             <p className="text-xs text-muted-foreground">
               {status === "uploading"
                 ? "Uploading ZIP to storage…"
-                : "Sending to daemon for extraction — this may take a few minutes for large servers…"}
+                : sourceType === "dir"
+                  ? "Daemon is copying directory — this may take a few minutes for large servers…"
+                  : "Sending to daemon for extraction — this may take a few minutes for large servers…"}
             </p>
           )}
         </div>

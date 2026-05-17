@@ -8,23 +8,22 @@ import { randomUUID } from "node:crypto";
 
 /**
  * POST /api/admin/servers/import
- * Multipart form fields:
- *   file                (File)   — ZIP archive of the server data
- *   node_id             (string) — target node UUID
- *   name                (string) — display name for the new server
- *   ram_mb              (number)
- *   disk_mb             (number)
- *   cpu_percent         (number)
- *   owner_clerk_user_id (string) — Clerk user ID the server belongs to
+ * Accepts multipart/form-data with these fields:
  *
- * Flow:
- *  1. Upload ZIP to S3 (preferred) or Supabase Storage at imports/{uuid}.zip
- *  2. Create server DB record with status "installing"
- *  3. Dispatch "import-zip" file-op to the daemon with the download URL
- *     NOTE: The daemon must handle the "import-zip" op — download the ZIP from
- *     the provided URL and extract it into the server's working directory.
- *  4. On daemon success → set server status to "offline"
- *     On daemon error / timeout → set server status to "error"
+ *   source_type          "zip" (default) | "dir"
+ *   node_id              target node UUID
+ *   name                 display name for the new server
+ *   ram_mb / disk_mb / cpu_percent
+ *   owner_clerk_user_id  Clerk user ID the server belongs to
+ *
+ *   --- source_type=zip ---
+ *   file                 ZIP archive of the server data
+ *
+ *   --- source_type=dir ---
+ *   source_path          Absolute path on the node, e.g. /opt/servers/my-server
+ *
+ * Flow (zip):  upload ZIP → S3/Supabase → dispatch "import-zip" to daemon
+ * Flow (dir):  no upload → dispatch "import-dir" to daemon with srcAbsPath
  */
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
@@ -39,7 +38,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid multipart form data" }, { status: 400 });
   }
 
+  const sourceType = (formData.get("source_type") as string | null) ?? "zip";
   const file = formData.get("file");
+  const sourcePath = formData.get("source_path") as string | null;
   const nodeId = formData.get("node_id") as string | null;
   const name = formData.get("name") as string | null;
   const ramMb = Number(formData.get("ram_mb") ?? 0);
@@ -47,8 +48,11 @@ export async function POST(req: NextRequest) {
   const cpuPercent = Number(formData.get("cpu_percent") ?? 0);
   const ownerClerkUserId = formData.get("owner_clerk_user_id") as string | null;
 
-  if (!file || !(file instanceof File)) {
-    return NextResponse.json({ error: "Missing file field" }, { status: 400 });
+  if (sourceType === "zip" && (!file || !(file instanceof File))) {
+    return NextResponse.json({ error: "Missing file field for ZIP import" }, { status: 400 });
+  }
+  if (sourceType === "dir" && !sourcePath?.trim()) {
+    return NextResponse.json({ error: "Missing source_path for directory import" }, { status: 400 });
   }
   if (!nodeId || !name || !ownerClerkUserId) {
     return NextResponse.json({ error: "Missing required fields: node_id, name, owner_clerk_user_id" }, { status: 400 });
@@ -80,27 +84,28 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── Upload ZIP ─────────────────────────────────────────────────────
-  const importId = randomUUID();
-  const storageKey = `imports/${importId}.zip`;
-  const fileBuffer = Buffer.from(await file.arrayBuffer());
+  // ── Upload ZIP (zip mode only) ──────────────────────────────────────
+  let downloadUrl: string | null = null;
+  let storageKey: string | null = null;
 
-  let downloadUrl: string;
+  if (sourceType === "zip") {
+    const importId = randomUUID();
+    storageKey = `imports/${importId}.zip`;
+    const fileBuffer = Buffer.from(await (file as File).arrayBuffer());
 
-  if (isS3Configured()) {
-    await s3Upload(storageKey, fileBuffer, "application/zip");
-    // Generate a presigned URL valid for 1 hour (the daemon needs time to download)
-    downloadUrl = await s3SignedDownloadUrl(storageKey, 3600);
-  } else {
-    // Fall back to Supabase Storage
-    const { error: uploadErr } = await admin.storage
-      .from("imports")
-      .upload(`${importId}.zip`, fileBuffer, { contentType: "application/zip", upsert: false });
-    if (uploadErr) {
-      return NextResponse.json({ error: `Storage upload failed: ${uploadErr.message}` }, { status: 500 });
+    if (isS3Configured()) {
+      await s3Upload(storageKey, fileBuffer, "application/zip");
+      downloadUrl = await s3SignedDownloadUrl(storageKey, 3600);
+    } else {
+      const { error: uploadErr } = await admin.storage
+        .from("imports")
+        .upload(`${importId}.zip`, fileBuffer, { contentType: "application/zip", upsert: false });
+      if (uploadErr) {
+        return NextResponse.json({ error: `Storage upload failed: ${uploadErr.message}` }, { status: 500 });
+      }
+      const { data: urlData } = admin.storage.from("imports").getPublicUrl(`${importId}.zip`);
+      downloadUrl = urlData.publicUrl;
     }
-    const { data: urlData } = admin.storage.from("imports").getPublicUrl(`${importId}.zip`);
-    downloadUrl = urlData.publicUrl;
   }
 
   // ── Pick a free allocation on the target node ──────────────────────
@@ -154,22 +159,20 @@ export async function POST(req: NextRequest) {
   // Insert console welcome event
   await admin.from("console_events").insert({
     server_id: server.id,
-    line: `[MCloud] Importing server "${name}" from ZIP. Please wait…`,
+    line: sourceType === "dir"
+      ? `[MCloud] Importing server "${name}" from directory ${sourcePath}. Please wait…`
+      : `[MCloud] Importing server "${name}" from ZIP. Please wait…`,
     source: "system",
   });
 
-  // ── Dispatch import-zip op to daemon ──────────────────────────────
-  // NOTE: The daemon must handle the "import-zip" op. It should:
-  //  1. Download the ZIP from `zipUrl`
-  //  2. Extract it to the server's working directory (targetPath "/")
-  //  3. Reply with an "import-result" broadcast containing { opId, ok: true }
-  //     or an "error" broadcast on failure.
+  // ── Dispatch op to daemon ─────────────────────────────────────────
   const opResult = await dispatchFileOp(
     nodeId,
     server.id,
-    "import-zip",
-    { zipUrl: downloadUrl, targetPath: "/", storageKey },
-    // Allow up to 5 minutes for large ZIPs
+    sourceType === "dir" ? "import-dir" : "import-zip",
+    sourceType === "dir"
+      ? { srcAbsPath: sourcePath!.trim(), targetPath: "/" }
+      : { zipUrl: downloadUrl, targetPath: "/", storageKey },
     300_000
   );
 

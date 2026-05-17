@@ -1,4 +1,4 @@
-import { readdir, stat, mkdir, writeFile, unlink, rename, rm, readFile } from "node:fs/promises";
+import { readdir, stat, mkdir, writeFile, unlink, rename, rm, readFile, cp } from "node:fs/promises";
 import path from "node:path";
 import { createWriteStream, createReadStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
@@ -327,6 +327,34 @@ async function exportToStorage(
   });
 }
 
+/**
+ * Import from an absolute directory path on the node's filesystem.
+ * Copies the entire contents of `srcAbsPath` into the server's `targetPath`.
+ * Accepts either the path to the server folder itself or any arbitrary directory.
+ */
+async function importFromDir(
+  serverId: string,
+  opId: string,
+  srcAbsPath: string,
+  targetPath: string
+) {
+  // Validate the source path exists and is a directory
+  const srcStat = await stat(srcAbsPath);
+  if (!srcStat.isDirectory()) {
+    throw new Error(`${srcAbsPath} is not a directory`);
+  }
+
+  const destAbs = resolveServerPath(serverId, targetPath);
+  await mkdir(destAbs, { recursive: true });
+
+  await emit(serverId, opId, "progress", { stage: "copying", srcAbsPath, targetPath });
+
+  // cp is recursive-capable since Node 16.7; force:true overwrites existing files
+  await cp(srcAbsPath, destAbs, { recursive: true, force: true });
+
+  await emit(serverId, opId, "import-result", { targetPath, ok: true });
+}
+
 async function zipPath(serverId: string, opId: string, sourcePath: string, archivePath: string) {
   const srcAbs = resolveServerPath(serverId, sourcePath);
   const dstAbs = resolveServerPath(serverId, archivePath);
@@ -387,6 +415,9 @@ export async function handleFileOp(req: FileOpRequest) {
         break;
       case "import-url":
         await importFromUrl(serverId, opId, req.url as string, req.targetPath as string);
+        break;
+      case "import-dir":
+        await importFromDir(serverId, opId, req.srcAbsPath as string, req.targetPath as string);
         break;
       case "export":
         await exportToStorage(serverId, opId, req.path as string, req.s3Config as InjectedS3Config | undefined);
