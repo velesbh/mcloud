@@ -86,5 +86,15 @@ export async function POST(
       .eq("id", id);
   }
 
+  // Release extra (non-primary) port allocations when server stops or is killed.
+  // This frees ports for other servers to use — prevents silent port hoarding.
+  if ((action === "stop" || action === "kill") && server.allocation_id) {
+    await admin
+      .from("allocations")
+      .update({ server_id: null, assigned_at: null })
+      .eq("server_id", id)
+      .neq("id", server.allocation_id);
+  }
+
   return NextResponse.json({ status: optimistic[action] });
 }

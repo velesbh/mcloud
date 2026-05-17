@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Play, Square, RotateCcw, Zap, ArrowRightLeft, WifiOff, Upload } from "lucide-react";
+import { Play, Square, RotateCcw, Zap, ArrowRightLeft, WifiOff, Upload, Network } from "lucide-react";
 import Link from "next/link";
 import { useLocale } from "next-intl";
 import { PageLoader } from "@/components/shared/LoadingScreen";
@@ -38,6 +38,8 @@ export default function AdminServersPage() {
   const [migrateTarget, setMigrateTarget] = useState<Server | null>(null);
   const [targetNode, setTargetNode] = useState("");
   const [migrating, setMigrating] = useState(false);
+  const [allocTarget, setAllocTarget] = useState<Server | null>(null);
+  const [allocating, setAllocating] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null); // `${serverId}:${action}`
 
   const { data: servers = [], isLoading } = useQuery<(Server & { allocations: any; nodes: any })[]>({
@@ -104,6 +106,28 @@ export default function AdminServersPage() {
       setTargetNode("");
     } finally {
       setMigrating(false);
+    }
+  }
+
+  async function forceAllocate() {
+    if (!allocTarget) return;
+    setAllocating(true);
+    try {
+      const res = await fetch(`/api/servers/${allocTarget.id}/ports`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "claim" }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(`Claimed ${data.claimed.ip}:${data.claimed.port} for ${allocTarget.name}`);
+        qc.invalidateQueries({ queryKey: ["admin-servers"] });
+        setAllocTarget(null);
+      } else {
+        toast.error(data.message ?? data.error ?? "Failed to allocate port");
+      }
+    } finally {
+      setAllocating(false);
     }
   }
 
@@ -256,6 +280,21 @@ export default function AdminServersPage() {
                           </TooltipTrigger>
                           <TooltipContent>Migrate to another node</TooltipContent>
                         </Tooltip>
+
+                        {/* Force Allocate Port */}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7 text-blue-400 hover:text-blue-300"
+                              onClick={() => setAllocTarget(server)}
+                            >
+                              <Network className="w-3.5 h-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Force claim a free port</TooltipContent>
+                        </Tooltip>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -264,6 +303,29 @@ export default function AdminServersPage() {
             </TableBody>
           </Table>
         </Card>
+
+        {/* Force Allocate Dialog */}
+        <Dialog open={!!allocTarget} onOpenChange={(o) => !o && setAllocTarget(null)}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Force Claim Port — {allocTarget?.name}</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground py-2">
+              This will assign the next free allocation on{" "}
+              <span className="font-medium text-foreground">
+                {nodes.find((n) => n.id === allocTarget?.node_id)?.name ?? "this node"}
+              </span>{" "}
+              to the server, bypassing the user&apos;s port quota.
+            </p>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAllocTarget(null)}>Cancel</Button>
+              <Button onClick={forceAllocate} disabled={allocating} className="gap-2">
+                {allocating && <LoadingSpinner size={12} />}
+                Claim Port
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Migrate Dialog */}
         <Dialog open={!!migrateTarget} onOpenChange={(o) => !o && setMigrateTarget(null)}>

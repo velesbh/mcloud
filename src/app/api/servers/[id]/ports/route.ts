@@ -40,11 +40,14 @@ export async function GET(
   if ("error" in r) return NextResponse.json({ error: r.error }, { status: r.status });
   const admin = createAdminSupabaseClient();
 
-  // Allocations owned by this user (across all their servers) on the SAME node
+  // Use the server owner's clerk ID (not the requester's — admins can view others' servers)
+  const ownerClerkId = r.server.clerk_user_id;
+
+  // All servers owned by the same user on the same node
   const { data: userServers } = await admin
     .from("servers")
     .select("id")
-    .eq("clerk_user_id", userId)
+    .eq("clerk_user_id", ownerClerkId)
     .eq("node_id", r.server.node_id!);
   const userServerIds = (userServers ?? []).map((s) => s.id);
 
@@ -65,11 +68,11 @@ export async function GET(
     .eq("node_id", r.server.node_id!)
     .is("server_id", null);
 
-  // User's quota
+  // Owner's quota
   const { data: profile } = await admin
     .from("profiles")
     .select("max_allocations")
-    .eq("clerk_user_id", userId)
+    .eq("clerk_user_id", ownerClerkId)
     .single();
   const max = (profile as { max_allocations?: number } | null)?.max_allocations ?? 1;
   const used = (claimed ?? []).length;
@@ -97,19 +100,24 @@ export async function POST(
   const body = await req.json();
   if (body.action !== "claim") return NextResponse.json({ error: "Bad action" }, { status: 400 });
 
-  // Check quota
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("max_allocations")
-    .eq("clerk_user_id", userId)
-    .single();
-  const max = (profile as { max_allocations?: number } | null)?.max_allocations ?? 1;
-  const { count: used } = await admin
-    .from("allocations")
-    .select("id", { head: true, count: "exact" })
-    .eq("server_id", id);
-  if ((used ?? 0) >= max) {
-    return NextResponse.json({ error: "Quota reached", message: `You have ${used}/${max} ports. Upgrade your plan for more.` }, { status: 403 });
+  const adminCaller = await isAdmin();
+
+  // Check quota (admins always bypass)
+  if (!adminCaller) {
+    const ownerClerkId = r.server.clerk_user_id;
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("max_allocations")
+      .eq("clerk_user_id", ownerClerkId)
+      .single();
+    const max = (profile as { max_allocations?: number } | null)?.max_allocations ?? 1;
+    const { count: used } = await admin
+      .from("allocations")
+      .select("id", { head: true, count: "exact" })
+      .eq("server_id", id);
+    if ((used ?? 0) >= max) {
+      return NextResponse.json({ error: "Quota reached", message: `You have ${used}/${max} ports. Upgrade your plan for more.` }, { status: 403 });
+    }
   }
 
   // Grab the lowest free port on this node
