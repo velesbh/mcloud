@@ -10,7 +10,8 @@ import { useLocale } from "next-intl";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-function requiredJava(gameVersion: string): "8" | "17" | "21" {
+function requiredJava(gameVersion: string | undefined | null): "8" | "17" | "21" {
+  if (!gameVersion) return "21";
   const [maj, min] = gameVersion.split(".").map(Number);
   if (maj > 1 || (maj === 1 && min >= 21)) return "21";
   if (maj === 1 && min >= 17) return "17";
@@ -30,9 +31,14 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
     ram_mb: 1024, cpu_percent: 100, disk_mb: 5120,
   });
 
-  const { data: server, isLoading } = useQuery({
+  const { data: server, isLoading, error: serverError } = useQuery({
     queryKey: ["server", id],
-    queryFn: () => fetch(`/api/servers/${id}`).then((r) => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`/api/servers/${id}`);
+      const json = await r.json();
+      if (!r.ok) throw new Error(json.error ?? "Failed to load server");
+      return json;
+    },
   });
 
   useEffect(() => {
@@ -50,9 +56,12 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
     }
   }, [server]);
 
-  if (isLoading || !server) {
-    return <div className="flex justify-center py-20"><LoadingSpinner size={28} /></div>;
-  }
+  if (isLoading) return <div className="flex justify-center py-20"><LoadingSpinner size={28} /></div>;
+  if (serverError || !server) return (
+    <div className="py-20 text-center text-muted-foreground font-minecraft text-xs uppercase">
+      {serverError ? (serverError as Error).message : "Server not found"}
+    </div>
+  );
 
   const changed = server.name !== form.name
     || (server.motd ?? "") !== form.motd
@@ -68,8 +77,8 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
   const newJava = requiredJava(form.game_version);
   const oldJava = requiredJava(server.game_version);
   const javaChanged = oldJava !== newJava;
-  const oldVer = parseFloat(server.game_version.split(".").slice(0, 2).join("."));
-  const newVer = parseFloat(form.game_version.split(".").slice(0, 2).join("."));
+  const oldVer = parseFloat((server.game_version ?? "1.21").split(".").slice(0, 2).join("."));
+  const newVer = parseFloat((form.game_version ?? "1.21").split(".").slice(0, 2).join("."));
   const downgrade = newVer < oldVer;
 
   async function save() {
