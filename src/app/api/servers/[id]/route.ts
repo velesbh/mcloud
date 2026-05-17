@@ -18,12 +18,18 @@ export async function GET(
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("servers")
-    .select("*, allocations!servers_allocation_id_fkey(ip, port), regions!servers_region_id_fkey(name, flag_emoji, slug), nodes!servers_node_id_fkey(name, fqdn)")
+    .select("*, allocations(ip, port), regions(name, flag_emoji, slug), nodes(name, fqdn)")
     .eq("id", id)
     .single();
 
-  if (error || !data)
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (error) {
+    if (error.code === "PGRST116") {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    console.error("[GET /api/servers/[id]] supabase error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  if (!data) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json(data);
 }
 

@@ -42,9 +42,14 @@ export default function WorldsPage({ params }: { params: Promise<{ id: string }>
   const [busy, setBusy] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data, isLoading, refetch } = useQuery<{ worlds: World[]; active: string }>({
+  const { data, isLoading, error: queryError, refetch } = useQuery<{ worlds: World[]; active: string }>({
     queryKey: ["worlds", id],
-    queryFn: () => fetch(`/api/servers/${id}/worlds`).then((r) => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`/api/servers/${id}/worlds`);
+      const json = await r.json();
+      if (!r.ok) throw new Error(json.error ?? "Failed to load worlds");
+      return json;
+    },
   });
 
   async function setActive(w: World) {
@@ -131,6 +136,12 @@ export default function WorldsPage({ params }: { params: Promise<{ id: string }>
     <div className="flex justify-center py-20"><LoadingSpinner size={28} /></div>
   );
 
+  if (queryError) return (
+    <div className="py-20 text-center text-muted-foreground font-minecraft text-xs uppercase">
+      {(queryError as Error).message}
+    </div>
+  );
+
   return (
     <div
       className="space-y-4 relative min-h-[calc(100vh-220px)] p-1"
@@ -161,8 +172,8 @@ export default function WorldsPage({ params }: { params: Promise<{ id: string }>
             <div>
               <h2 className="font-minecraft text-[12px] uppercase">Worlds</h2>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                {data?.worlds.length ?? 0} world{(data?.worlds.length ?? 0) === 1 ? "" : "s"} ·
-                {" "}Active: <span className="text-primary font-mono">{data?.active}</span>
+                {data?.worlds?.length ?? 0} world{(data?.worlds?.length ?? 0) === 1 ? "" : "s"} ·
+                {" "}Active: <span className="text-primary font-mono">{data?.active ?? "—"}</span>
               </p>
             </div>
           </div>
@@ -184,7 +195,7 @@ export default function WorldsPage({ params }: { params: Promise<{ id: string }>
         )}
       </PixelPanel>
 
-      {(data?.worlds.length ?? 0) === 0 ? (
+      {(data?.worlds?.length ?? 0) === 0 ? (
         <PixelPanel variant="stone" className="p-12 text-center">
           <Globe className="w-12 h-12 mx-auto text-muted-foreground/40 mb-3" />
           <p className="font-minecraft text-xs uppercase text-muted-foreground">No worlds yet</p>
