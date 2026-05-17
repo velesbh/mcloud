@@ -29,6 +29,7 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
     name: "", motd: "", max_players: 20,
     game_version: "1.21.4", loader: "paper" as string,
     ram_mb: 1024, cpu_percent: 100, disk_mb: 5120,
+    startup_jar: "", java_version: "21",
   });
 
   const { data: server, isLoading, error: serverError } = useQuery({
@@ -43,6 +44,7 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
 
   useEffect(() => {
     if (server) {
+      const ev = (server.env_vars as Record<string, unknown>) ?? {};
       setForm({
         name: server.name,
         motd: server.motd ?? "",
@@ -52,6 +54,8 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
         ram_mb: server.ram_mb ?? 1024,
         cpu_percent: server.cpu_percent ?? 100,
         disk_mb: server.disk_mb ?? 5120,
+        startup_jar: (ev.startup_jar as string) ?? "",
+        java_version: (ev.java_version as string) ?? "21",
       });
     }
   }, [server]);
@@ -70,7 +74,9 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
     || server.loader !== form.loader
     || (server.ram_mb ?? 1024) !== form.ram_mb
     || (server.cpu_percent ?? 100) !== form.cpu_percent
-    || (server.disk_mb ?? 5120) !== form.disk_mb;
+    || (server.disk_mb ?? 5120) !== form.disk_mb
+    || ((server.env_vars as Record<string, unknown>)?.startup_jar ?? "") !== form.startup_jar
+    || ((server.env_vars as Record<string, unknown>)?.java_version ?? "21") !== form.java_version;
 
   const versionChanged = server.game_version !== form.game_version;
   const loaderChanged = server.loader !== form.loader;
@@ -170,6 +176,34 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
             >
               {JAVA_LOADERS.map((l) => <option key={l.id} value={l.id}>{l.label} — {l.desc}</option>)}
             </select>
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-[10px] font-minecraft uppercase text-muted-foreground">Startup JAR</label>
+            <input
+              value={form.startup_jar}
+              onChange={(e) => setForm({ ...form, startup_jar: e.target.value })}
+              placeholder="server.jar"
+              className="mt-1 w-full px-3 py-2 text-sm font-mono bg-background border-2 border-border focus:border-primary outline-none"
+              style={{ borderRadius: 0 }}
+            />
+            <p className="text-[10px] text-muted-foreground mt-1">Leave blank to use the default jar.</p>
+          </div>
+          <div>
+            <label className="text-[10px] font-minecraft uppercase text-muted-foreground">Java Version</label>
+            <select
+              value={form.java_version}
+              onChange={(e) => setForm({ ...form, java_version: e.target.value })}
+              className="mt-1 w-full px-3 py-2 text-sm font-mono bg-background border-2 border-border focus:border-primary outline-none"
+              style={{ borderRadius: 0 }}
+            >
+              {["8", "11", "17", "21", "24", "25"].map((v) => (
+                <option key={v} value={v}>Java {v}</option>
+              ))}
+            </select>
+            <p className="text-[10px] text-muted-foreground mt-1">Override auto-detected Java runtime.</p>
           </div>
         </div>
 

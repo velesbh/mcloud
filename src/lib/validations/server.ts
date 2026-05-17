@@ -29,6 +29,9 @@ export const updateServerSchema = z.object({
   java_flags: z.string().max(500).optional(),
   game_version: z.string().optional(),
   loader: z.enum(["vanilla", "paper", "spigot", "fabric", "forge", "neoforge", "quilt", "bedrock"]).optional(),
+  // Merged into env_vars by the PATCH route
+  startup_jar: z.string().max(128).optional(),
+  java_version: z.string().optional(),
 });
 
 export type CreateServerInput = z.infer<typeof createServerSchema>;

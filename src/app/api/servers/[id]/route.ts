@@ -51,10 +51,30 @@ export async function PATCH(
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
+  // Extract env_vars fields before sending to DB
+  const { startup_jar, java_version, ...dbFields } = parsed.data;
+
+  // Merge startup_jar / java_version into env_vars if provided
+  let updatePayload: Database["mcloud"]["Tables"]["servers"]["Update"] = dbFields;
+  if (startup_jar !== undefined || java_version !== undefined) {
+    const adminClient = createAdminSupabaseClient();
+    const { data: current } = await adminClient
+      .from("servers").select("env_vars").eq("id", id).single();
+    const existing = (current?.env_vars as Record<string, unknown>) ?? {};
+    updatePayload = {
+      ...dbFields,
+      env_vars: {
+        ...existing,
+        ...(startup_jar !== undefined ? { startup_jar } : {}),
+        ...(java_version !== undefined ? { java_version } : {}),
+      },
+    };
+  }
+
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("servers")
-    .update(parsed.data as Database["mcloud"]["Tables"]["servers"]["Update"])
+    .update(updatePayload)
     .eq("id", id)
     .select()
     .single();
