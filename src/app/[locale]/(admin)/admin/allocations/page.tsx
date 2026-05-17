@@ -1,7 +1,7 @@
 "use client";
 import { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Layers } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,23 +19,31 @@ import type { Node } from "@/lib/supabase/types";
 
 const DEFAULT_LOCAL_IP = "0.0.0.0";
 
+// Parse "25565" → {from:25565,to:25565} or "25565-25600" → {from:25565,to:25600}
+// Returns null if invalid.
+function parsePortInput(raw: string): { from: number; to: number } | null {
+  const trimmed = raw.trim();
+  const rangeMatch = trimmed.match(/^(\d+)\s*[-–]\s*(\d+)$/);
+  if (rangeMatch) {
+    const from = parseInt(rangeMatch[1]);
+    const to = parseInt(rangeMatch[2]);
+    if (from >= 1 && to <= 65535 && from <= to) return { from, to };
+    return null;
+  }
+  const single = parseInt(trimmed);
+  if (!isNaN(single) && single >= 1 && single <= 65535) return { from: single, to: single };
+  return null;
+}
+
 export default function AllocationsPage() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [rangeOpen, setRangeOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     node_id: "",
     ip: "",
-    port: 25565,
-    local_ip: DEFAULT_LOCAL_IP,
-  });
-  const [rangeForm, setRangeForm] = useState({
-    node_id: "",
-    ip: "",
-    port_from: 25565,
-    port_to: 25600,
+    ports: "25565",
     local_ip: DEFAULT_LOCAL_IP,
   });
 
@@ -74,58 +82,42 @@ export default function AllocationsPage() {
   }, [allocations]);
 
   function resetForm() {
-    setForm({ node_id: "", ip: "", port: 25565, local_ip: DEFAULT_LOCAL_IP });
+    setForm({ node_id: "", ip: "", ports: "25565", local_ip: DEFAULT_LOCAL_IP });
   }
 
-  function resetRangeForm() {
-    setRangeForm({ node_id: "", ip: "", port_from: 25565, port_to: 25600, local_ip: DEFAULT_LOCAL_IP });
-  }
+  const parsedPorts = parsePortInput(form.ports);
+  const portCount = parsedPorts ? parsedPorts.to - parsedPorts.from + 1 : 0;
+  const isSingle = portCount === 1;
 
   async function createAllocation() {
+    if (!parsedPorts) { toast.error("Invalid port or range"); return; }
     setSaving(true);
+    const toastId = isSingle ? undefined : toast.loading(`Creating ${portCount} allocations...`);
     try {
-      const res = await fetch("/api/allocations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
+      let res: Response;
+      if (isSingle) {
+        res = await fetch("/api/allocations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ node_id: form.node_id, ip: form.ip, port: parsedPorts.from, local_ip: form.local_ip }),
+        });
+      } else {
+        res = await fetch("/api/allocations/batch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ node_id: form.node_id, ip: form.ip, port_from: parsedPorts.from, port_to: parsedPorts.to, local_ip: form.local_ip }),
+        });
+      }
       if (res.ok) {
         qc.invalidateQueries({ queryKey: ["allocations"] });
-        toast.success("Allocation created");
+        const msg = isSingle ? "Allocation created" : `Created ${portCount} allocations`;
+        if (toastId) toast.success(msg, { id: toastId }); else toast.success(msg);
         setOpen(false);
         resetForm();
       } else {
         const err = await res.json();
-        toast.error(err.error ?? "Failed to create allocation");
-      }
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function createPortRange() {
-    const count = rangeForm.port_to - rangeForm.port_from + 1;
-    if (count <= 0) {
-      toast.error("Port range is invalid");
-      return;
-    }
-    setSaving(true);
-    const toastId = toast.loading(`Creating ${count} allocations...`);
-    try {
-      const res = await fetch("/api/allocations/batch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(rangeForm),
-      });
-      if (res.ok) {
-        const { created } = await res.json();
-        toast.success(`Created ${created} allocations`, { id: toastId });
-        qc.invalidateQueries({ queryKey: ["allocations"] });
-        setRangeOpen(false);
-        resetRangeForm();
-      } else {
-        const err = await res.json();
-        toast.error(err.error ?? "Failed to create allocations", { id: toastId });
+        const msg = err.error ?? "Failed to create allocation(s)";
+        if (toastId) toast.error(msg, { id: toastId }); else toast.error(msg);
       }
     } finally {
       setSaving(false);
@@ -146,16 +138,10 @@ export default function AllocationsPage() {
         title="Allocations"
         description="IP:port pairs available for server assignment, grouped by node."
         action={
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setRangeOpen(true)} className="gap-2">
-              <Layers className="w-4 h-4" />
-              Add Port Range
-            </Button>
-            <Button onClick={() => setOpen(true)} className="gap-2">
-              <Plus className="w-4 h-4" />
-              Add Allocation
-            </Button>
-          </div>
+          <Button onClick={() => setOpen(true)} className="gap-2">
+            <Plus className="w-4 h-4" />
+            Add Allocation
+          </Button>
         }
       />
 
@@ -229,18 +215,11 @@ export default function AllocationsPage() {
           <div className="grid gap-3 py-2">
             <div className="space-y-1">
               <Label>Node</Label>
-              <Select
-                value={form.node_id}
-                onValueChange={(v) => setForm({ ...form, node_id: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select node" />
-                </SelectTrigger>
+              <Select value={form.node_id} onValueChange={(v) => setForm({ ...form, node_id: v })}>
+                <SelectTrigger><SelectValue placeholder="Select node" /></SelectTrigger>
                 <SelectContent>
                   {nodes.map((n) => (
-                    <SelectItem key={n.id} value={n.id}>
-                      {n.name}
-                    </SelectItem>
+                    <SelectItem key={n.id} value={n.id}>{n.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -256,18 +235,27 @@ export default function AllocationsPage() {
                 />
               </div>
               <div className="space-y-1">
-                <Label>Port</Label>
+                <Label>Port(s)</Label>
                 <Input
-                  type="number"
-                  value={form.port}
-                  onChange={(e) =>
-                    setForm({ ...form, port: parseInt(e.target.value) || 25565 })
-                  }
-                  min={1024}
-                  max={65535}
+                  value={form.ports}
+                  onChange={(e) => setForm({ ...form, ports: e.target.value })}
+                  placeholder="25565 or 25565-25600"
                 />
               </div>
             </div>
+
+            {form.ports && (
+              parsedPorts ? (
+                <p className="text-xs text-muted-foreground">
+                  {isSingle
+                    ? <>Single port <span className="font-mono text-foreground">{parsedPorts.from}</span></>
+                    : <>Range <span className="font-mono text-foreground">{parsedPorts.from}–{parsedPorts.to}</span> · will create <span className="font-medium text-foreground">{portCount}</span> allocation{portCount !== 1 ? "s" : ""}</>
+                  }
+                </p>
+              ) : (
+                <p className="text-xs text-destructive">Invalid — use a port number (25565) or range (25565-25600)</p>
+              )
+            )}
 
             <div className="space-y-1">
               <Label>Local IP (bind address)</Label>
@@ -277,114 +265,19 @@ export default function AllocationsPage() {
                 placeholder={DEFAULT_LOCAL_IP}
               />
               <p className="text-xs text-muted-foreground">
-                The interface the daemon binds to. Use {DEFAULT_LOCAL_IP} to bind all interfaces.
+                Interface the daemon binds to. Use {DEFAULT_LOCAL_IP} for all interfaces.
               </p>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setOpen(false); resetForm(); }}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={() => { setOpen(false); resetForm(); }}>Cancel</Button>
             <Button
               onClick={createAllocation}
-              disabled={saving || !form.node_id || !form.ip}
+              disabled={saving || !form.node_id || !form.ip || !parsedPorts || portCount > 500}
               className="gap-2"
             >
               {saving && <LoadingSpinner size={12} />}
-              Add
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add Port Range Dialog */}
-      <Dialog open={rangeOpen} onOpenChange={(o) => { setRangeOpen(o); if (!o) resetRangeForm(); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Add Port Range</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-3 py-2">
-            <div className="space-y-1">
-              <Label>Node</Label>
-              <Select
-                value={rangeForm.node_id}
-                onValueChange={(v) => setRangeForm({ ...rangeForm, node_id: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select node" />
-                </SelectTrigger>
-                <SelectContent>
-                  {nodes.map((n) => (
-                    <SelectItem key={n.id} value={n.id}>
-                      {n.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1">
-              <Label>Public IP</Label>
-              <Input
-                value={rangeForm.ip}
-                onChange={(e) => setRangeForm({ ...rangeForm, ip: e.target.value })}
-                placeholder="203.0.113.1"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label>Port From</Label>
-                <Input
-                  type="number"
-                  value={rangeForm.port_from}
-                  onChange={(e) =>
-                    setRangeForm({ ...rangeForm, port_from: parseInt(e.target.value) || 25565 })
-                  }
-                  min={1024}
-                  max={65535}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Port To</Label>
-                <Input
-                  type="number"
-                  value={rangeForm.port_to}
-                  onChange={(e) =>
-                    setRangeForm({ ...rangeForm, port_to: parseInt(e.target.value) || 25600 })
-                  }
-                  min={1024}
-                  max={65535}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label>Local IP (bind address)</Label>
-              <Input
-                value={rangeForm.local_ip}
-                onChange={(e) => setRangeForm({ ...rangeForm, local_ip: e.target.value })}
-                placeholder={DEFAULT_LOCAL_IP}
-              />
-            </div>
-
-            {rangeForm.port_to >= rangeForm.port_from && (
-              <p className="text-xs text-muted-foreground">
-                This will create <span className="font-medium text-foreground">{rangeForm.port_to - rangeForm.port_from + 1}</span> allocation(s).
-              </p>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setRangeOpen(false); resetRangeForm(); }}>
-              Cancel
-            </Button>
-            <Button
-              onClick={createPortRange}
-              disabled={saving || !rangeForm.node_id || !rangeForm.ip || rangeForm.port_to < rangeForm.port_from}
-              className="gap-2"
-            >
-              {saving && <LoadingSpinner size={12} />}
-              Create Range
+              {isSingle ? "Add" : `Create ${portCount} allocations`}
             </Button>
           </DialogFooter>
         </DialogContent>
