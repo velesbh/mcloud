@@ -499,6 +499,31 @@ export interface Database {
         };
         Relationships: [];
       };
+      server_metrics: {
+        Row: {
+          id: number;
+          server_id: string;
+          sampled_at: string;
+          ram_used_mb: number;
+          cpu_percent: number;
+          player_count: number;
+        };
+        Insert: {
+          server_id: string;
+          ram_used_mb?: number;
+          cpu_percent?: number;
+          player_count?: number;
+          sampled_at?: string;
+        };
+        Update: {
+          server_id?: string;
+          ram_used_mb?: number;
+          cpu_percent?: number;
+          player_count?: number;
+          sampled_at?: string;
+        };
+        Relationships: [];
+      };
       admin_settings: {
         Row: {
           key: string;
@@ -614,3 +639,4 @@ export type ServerFile = Database["mcloud"]["Tables"]["server_files"]["Row"];
 export type PublicIp = Database["mcloud"]["Tables"]["public_ips"]["Row"];
 export type BillingPlan = Database["mcloud"]["Tables"]["billing_plans"]["Row"];
 export type InviteLink = Database["mcloud"]["Tables"]["invite_links"]["Row"];
+export type ServerMetric = Database["mcloud"]["Tables"]["server_metrics"]["Row"];

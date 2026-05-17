@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { getRunning } from "./server-manager.js";
 import { broadcastMetrics } from "./console-bridge.js";
 import { log } from "./logger.js";
+import { supabase } from "./supabase.js";
 
 interface CpuSnapshot {
   utime: number;
@@ -74,6 +75,23 @@ export function startMetricsBroadcaster() {
       log.debug("metrics", { serverId, pid, ramMb, cpuPercent });
     }
   }, 5_000);
+
+  // Every 60 s, persist a snapshot to the server_metrics table for historical analytics.
+  setInterval(async () => {
+    const running = getRunning();
+    for (const [serverId, info] of running) {
+      const pid = info.proc.pid;
+      if (!pid) continue;
+      const [ramMb, cpuPercent] = await Promise.all([readRamMb(pid), readCpuPercent(pid)]);
+      const { error } = await supabase.from("server_metrics").insert({
+        server_id: serverId,
+        ram_used_mb: ramMb,
+        cpu_percent: cpuPercent,
+        player_count: 0, // TODO: wire player count from RCON/log parsing
+      });
+      if (error) log.warn("metrics persist error", { serverId, error: error.message });
+    }
+  }, 60_000);
 
   log.info("metrics broadcaster started");
 }

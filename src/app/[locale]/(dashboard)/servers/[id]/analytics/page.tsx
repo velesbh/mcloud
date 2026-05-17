@@ -10,12 +10,14 @@ import {
   Network,
   Clock,
   AlertTriangle,
+  Info,
 } from "lucide-react";
 import { PageLoader } from "@/components/shared/LoadingScreen";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Sparkline } from "@/components/server/Sparkline";
 import { formatMb } from "@/lib/utils";
+import { useSupabaseClient } from "@/lib/supabase/client";
 
 type Server = {
   id: string;
@@ -28,17 +30,24 @@ type Server = {
   last_started_at: string | null;
 };
 
-// Deterministic pseudo-random series so analytics looks stable across reloads.
-// Replace with real metrics when the agent is wired up.
-function seededSeries(seed: string, length: number, scale: number, base = 0.4): number[] {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-  return Array.from({ length }).map((_, i) => {
-    h = (h * 1103515245 + 12345) >>> 0;
-    const r = ((h >>> 16) & 0x7fff) / 0x7fff;
-    return Math.max(0, Math.min(1, base + Math.sin(i / 3) * 0.18 + (r - 0.5) * 0.32)) * scale;
-  });
-}
+type MetricRow = {
+  id: number;
+  server_id: string;
+  sampled_at: string;
+  ram_used_mb: number;
+  cpu_percent: number;
+  player_count: number;
+};
+
+type LiveMetrics = {
+  ram_used_mb: number;
+  cpu_percent: number;
+};
+
+type PingData = {
+  online: boolean;
+  players_online?: number;
+};
 
 export default function ServerAnalyticsPage({
   params,
@@ -47,35 +56,72 @@ export default function ServerAnalyticsPage({
 }) {
   const { id } = use(params);
   const [now, setNow] = useState(() => Date.now());
+  const [liveMetrics, setLiveMetrics] = useState<LiveMetrics | null>(null);
+  const supabase = useSupabaseClient();
 
+  // Tick uptime every 30 s
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(t);
   }, []);
 
+  // Server info
   const { data: server, isLoading } = useQuery<Server>({
     queryKey: ["server", id],
     queryFn: () => fetch(`/api/servers/${id}`).then((r) => r.json()),
   });
 
-  const isRunning = server?.status === "running";
+  // Historical metrics — refetch every 60 s
+  const { data: historicalMetrics = [] } = useQuery<MetricRow[]>({
+    queryKey: ["server-metrics", id],
+    queryFn: () => fetch(`/api/servers/${id}/metrics`).then((r) => r.json()),
+    refetchInterval: 60_000,
+    enabled: !!server,
+  });
 
+  // Live player count via ping — polled every 30 s
+  const { data: pingData } = useQuery<PingData>({
+    queryKey: ["server-ping", id],
+    queryFn: () => fetch(`/api/servers/${id}/ping`).then((r) => r.json()),
+    refetchInterval: 30_000,
+    enabled: server?.status === "running",
+  });
+
+  // Subscribe to Realtime broadcast for live CPU/RAM every 5 s
+  useEffect(() => {
+    const channel = supabase
+      .channel(`console:${id}`, { config: { broadcast: { self: false } } })
+      .on("broadcast", { event: "metrics" }, (msg) => {
+        const payload = msg.payload as { ram_used_mb: number; cpu_percent: number };
+        setLiveMetrics({ ram_used_mb: payload.ram_used_mb, cpu_percent: payload.cpu_percent });
+      })
+      .subscribe();
+
+    return () => { void channel.unsubscribe(); };
+  }, [id, supabase]);
+
+  const isRunning = server?.status === "running";
+  const hasHistory = historicalMetrics.length > 0;
+
+  // Sparkline series — fall back to zeros if no history yet
   const ramSeries = useMemo(
-    () => (server ? seededSeries(`${id}-ram`, 60, server.ram_mb, isRunning ? 0.55 : 0) : []),
-    [id, server, isRunning]
+    () => hasHistory ? historicalMetrics.map((r) => r.ram_used_mb) : Array(60).fill(0),
+    [historicalMetrics, hasHistory]
   );
   const cpuSeries = useMemo(
-    () => (server ? seededSeries(`${id}-cpu`, 60, server.cpu_percent, isRunning ? 0.45 : 0) : []),
-    [id, server, isRunning]
+    () => hasHistory ? historicalMetrics.map((r) => r.cpu_percent) : Array(60).fill(0),
+    [historicalMetrics, hasHistory]
   );
   const playerSeries = useMemo(
-    () => (server ? seededSeries(`${id}-players`, 60, server.max_players, isRunning ? 0.4 : 0) : []),
-    [id, server, isRunning]
+    () => hasHistory ? historicalMetrics.map((r) => r.player_count) : Array(60).fill(0),
+    [historicalMetrics, hasHistory]
   );
-  const networkSeries = useMemo(
-    () => (server ? seededSeries(`${id}-net`, 60, 1500, isRunning ? 0.3 : 0) : []),
-    [id, server, isRunning]
-  );
+
+  // Live current values — prefer realtime broadcast, else last historical row
+  const lastHistorical = historicalMetrics[historicalMetrics.length - 1];
+  const currentRam = liveMetrics?.ram_used_mb ?? lastHistorical?.ram_used_mb ?? 0;
+  const currentCpu = liveMetrics?.cpu_percent ?? lastHistorical?.cpu_percent ?? 0;
+  const currentPlayers = pingData?.players_online ?? lastHistorical?.player_count ?? 0;
 
   const uptime = useMemo(() => {
     if (!server?.last_started_at || !isRunning) return null;
@@ -87,12 +133,10 @@ export default function ServerAnalyticsPage({
 
   if (isLoading || !server) return <PageLoader />;
 
-  const last = <T extends number>(arr: T[]) => arr[arr.length - 1] ?? 0;
-
   const cards = [
     {
       label: "RAM",
-      value: formatMb(Math.round(last(ramSeries))),
+      value: formatMb(currentRam),
       max: formatMb(server.ram_mb),
       icon: MemoryStick,
       color: "text-blue-500",
@@ -102,7 +146,7 @@ export default function ServerAnalyticsPage({
     },
     {
       label: "CPU",
-      value: `${Math.round(last(cpuSeries))}%`,
+      value: `${currentCpu}%`,
       max: `${server.cpu_percent}%`,
       icon: Cpu,
       color: "text-amber-500",
@@ -112,7 +156,7 @@ export default function ServerAnalyticsPage({
     },
     {
       label: "Players",
-      value: Math.round(last(playerSeries)).toString(),
+      value: currentPlayers.toString(),
       max: server.max_players.toString(),
       icon: Users,
       color: "text-primary",
@@ -122,12 +166,12 @@ export default function ServerAnalyticsPage({
     },
     {
       label: "Network",
-      value: `${Math.round(last(networkSeries))} kbps`,
+      value: "—",
       max: "Last hour",
       icon: Network,
       color: "text-purple-500",
       bg: "bg-purple-500/10",
-      series: networkSeries,
+      series: Array(60).fill(0) as number[],
       max_y: 1500,
     },
   ];
@@ -155,6 +199,13 @@ export default function ServerAnalyticsPage({
           )}
         </div>
       </div>
+
+      {!hasHistory && isRunning && (
+        <div className="flex items-start gap-2 rounded-md border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+          <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+          <span>Metrics will appear after the server has been running for 1 minute.</span>
+        </div>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {cards.map((c, i) => (

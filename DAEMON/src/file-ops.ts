@@ -215,6 +215,15 @@ async function exportToStorage(
     setTimeout(() => { void s3Delete(storageKey); }, 30_000);
   } else {
     // ── Supabase Storage fallback ──
+    // Auto-create bucket on first use (idempotent — ignore "already exists")
+    const { error: bucketErr } = await supabase.storage.createBucket(STORAGE_BUCKET, {
+      public: false,
+      fileSizeLimit: 256 * 1024 * 1024,
+    });
+    if (bucketErr && !bucketErr.message.toLowerCase().includes("already exist")) {
+      throw new Error(`bucket create: ${bucketErr.message}`);
+    }
+
     const { error } = await supabase.storage.from(STORAGE_BUCKET).upload(storageKey, body, {
       contentType,
       upsert: true,
