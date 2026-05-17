@@ -15,8 +15,12 @@ export async function GET(
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase
+
+  // Admins use the service-role client to bypass RLS and see any server
+  const adminAccess = await isAdmin();
+  const client = adminAccess ? createAdminSupabaseClient() : await createServerSupabaseClient();
+
+  const { data, error } = await client
     .from("servers")
     .select("*, allocations!servers_allocation_id_fkey(ip, port), regions(name, flag_emoji, slug), nodes(name, fqdn)")
     .eq("id", id)

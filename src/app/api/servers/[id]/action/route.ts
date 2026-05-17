@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { isAdmin } from "@/lib/clerk/auth";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import type { ServerStatus } from "@/lib/supabase/types";
 
@@ -32,7 +33,7 @@ export async function POST(
     .single();
 
   if (!server) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (server.clerk_user_id !== userId) {
+  if (server.clerk_user_id !== userId && !(await isAdmin())) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   if (server.status === "hibernated" && action !== "kill") {

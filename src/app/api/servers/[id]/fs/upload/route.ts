@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { isAdmin } from "@/lib/clerk/auth";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { dispatchFileOp } from "@/lib/server/file-ops-bridge";
 import { isS3Configured, s3Upload, s3Delete, S3_BUCKET } from "@/lib/storage/s3";
@@ -34,7 +35,7 @@ export async function POST(
     .eq("id", id)
     .single();
   if (!server) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (server.clerk_user_id !== userId)
+  if (server.clerk_user_id !== userId && !(await isAdmin()))
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   if (!server.node_id)
     return NextResponse.json({ error: "Server has no node assigned" }, { status: 409 });

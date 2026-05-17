@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { isAdmin } from "@/lib/clerk/auth";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { dispatchWorldOp } from "@/lib/server/file-ops-bridge";
 
@@ -11,7 +12,7 @@ async function getServer(userId: string, id: string) {
     .eq("id", id)
     .single();
   if (!server) return { error: "Not found", status: 404 as const };
-  if (server.clerk_user_id !== userId) return { error: "Forbidden", status: 403 as const };
+  if (server.clerk_user_id !== userId && !(await isAdmin())) return { error: "Forbidden", status: 403 as const };
   if (!server.node_id) return { error: "No node assigned", status: 409 as const };
   return { server };
 }

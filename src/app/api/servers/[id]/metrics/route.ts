@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { isAdmin } from "@/lib/clerk/auth";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 
 /**
  * GET /api/servers/[id]/metrics
@@ -17,14 +19,17 @@ async function getServerAndCheckOwnership(
   userId: string,
   serverId: string
 ) {
-  const { data, error } = await supabase
+  // Admins bypass RLS — use the admin client so they can see any server
+  const adminAccess = await isAdmin();
+  const client = adminAccess ? createAdminSupabaseClient() : supabase;
+  const { data, error } = await client
     .from("servers")
     .select("id, clerk_user_id")
     .eq("id", serverId)
     .single();
 
   if (error || !data) return null;
-  if (data.clerk_user_id !== userId) return null;
+  if (data.clerk_user_id !== userId && !adminAccess) return null;
   return data;
 }
 

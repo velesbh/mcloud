@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { isAdmin } from "@/lib/clerk/auth";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 
 /**
@@ -39,7 +40,7 @@ export async function GET(
     .single();
 
   if (!server) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (server.clerk_user_id !== userId) {
+  if (server.clerk_user_id !== userId && !(await isAdmin())) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

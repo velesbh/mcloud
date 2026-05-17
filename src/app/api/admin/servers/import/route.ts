@@ -72,16 +72,32 @@ export async function POST(req: NextRequest) {
   if (!node) return NextResponse.json({ error: "Node not found" }, { status: 404 });
 
   // ── Resolve or create profile for owner ───────────────────────────
-  const { data: profile } = await admin
+  let { data: profile } = await admin
     .from("profiles")
     .select("id")
     .eq("clerk_user_id", ownerClerkUserId)
     .maybeSingle();
+
   if (!profile) {
-    return NextResponse.json(
-      { error: "Owner profile not found. The user must have logged in at least once." },
-      { status: 404 }
-    );
+    // Auto-create a minimal profile so admins can import for any Clerk user ID
+    // even if that user has never signed in yet. The webhook will update it on first login.
+    const { data: created, error: createErr } = await admin
+      .from("profiles")
+      .insert({
+        clerk_user_id: ownerClerkUserId,
+        email: `${ownerClerkUserId}@imported.local`,
+        display_name: null,
+        role: "user",
+      } as never)
+      .select("id")
+      .single();
+    if (createErr || !created) {
+      return NextResponse.json(
+        { error: `Failed to create owner profile: ${createErr?.message ?? "unknown"}` },
+        { status: 500 }
+      );
+    }
+    profile = created;
   }
 
   // ── Upload ZIP (zip mode only) ──────────────────────────────────────

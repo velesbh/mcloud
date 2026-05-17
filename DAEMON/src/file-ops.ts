@@ -1,4 +1,4 @@
-import { readdir, stat, mkdir, writeFile, unlink, rename, rm, readFile, cp } from "node:fs/promises";
+import { readdir, stat, mkdir, writeFile, unlink, rename, rm, readFile, cp, symlink } from "node:fs/promises";
 import path from "node:path";
 import { createWriteStream, createReadStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
@@ -328,31 +328,30 @@ async function exportToStorage(
 }
 
 /**
- * Import from an absolute directory path on the node's filesystem.
- * Copies the entire contents of `srcAbsPath` into the server's `targetPath`.
- * Accepts either the path to the server folder itself or any arbitrary directory.
+ * Import from an absolute directory path on the node's filesystem by symlinking
+ * the source directory as the server's root. No files are copied — the daemon
+ * reads and writes directly to srcAbsPath through the symlink.
  */
 async function importFromDir(
   serverId: string,
   opId: string,
   srcAbsPath: string,
-  targetPath: string
+  _targetPath: string
 ) {
-  // Validate the source path exists and is a directory
   const srcStat = await stat(srcAbsPath);
   if (!srcStat.isDirectory()) {
     throw new Error(`${srcAbsPath} is not a directory`);
   }
 
-  const destAbs = resolveServerPath(serverId, targetPath);
-  await mkdir(destAbs, { recursive: true });
+  const serverRoot = path.resolve(config.serversDir, serverId);
 
-  await emit(serverId, opId, "progress", { stage: "copying", srcAbsPath, targetPath });
+  // Remove any pre-created empty directory so we can place the symlink
+  await rm(serverRoot, { recursive: true, force: true });
 
-  // cp is recursive-capable since Node 16.7; force:true overwrites existing files
-  await cp(srcAbsPath, destAbs, { recursive: true, force: true });
+  // Symlink {serversDir}/{serverId} → srcAbsPath
+  await symlink(srcAbsPath, serverRoot);
 
-  await emit(serverId, opId, "import-result", { targetPath, ok: true });
+  await emit(serverId, opId, "import-result", { targetPath: "/", ok: true });
 }
 
 async function zipPath(serverId: string, opId: string, sourcePath: string, archivePath: string) {
