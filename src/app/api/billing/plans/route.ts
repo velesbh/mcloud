@@ -10,8 +10,20 @@ export async function GET(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const showAll = req.nextUrl.searchParams.get("all") === "1";
+  // ?key=PLAN_KEY — returns a single plan regardless of is_visible (for secret checkout links)
+  const planKey = req.nextUrl.searchParams.get("key");
   const admin = await isAdmin();
   const supabase = createAdminSupabaseClient();
+
+  if (planKey) {
+    const { data, error } = await supabase
+      .from("billing_plans")
+      .select("*")
+      .eq("plan_key", planKey)
+      .single();
+    if (error || !data) return NextResponse.json({ error: "Plan not found" }, { status: 404 });
+    return NextResponse.json(data);
+  }
 
   let query = supabase
     .from("billing_plans")

@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Star } from "lucide-react";
+import { Plus, Pencil, Trash2, Star, Link2 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { PageLoader } from "@/components/shared/LoadingScreen";
@@ -215,6 +215,20 @@ export default function AdminBillingPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-muted-foreground"
+                        title="Copy secret checkout link"
+                        onClick={() => {
+                          const base = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
+                          const url = `${base}/en/upgrade?plan=${encodeURIComponent(p.plan_key)}`;
+                          navigator.clipboard.writeText(url);
+                          toast.success("Secret checkout link copied!");
+                        }}
+                      >
+                        <Link2 className="w-3.5 h-3.5" />
+                      </Button>
                       <Button
                         size="icon"
                         variant="ghost"
