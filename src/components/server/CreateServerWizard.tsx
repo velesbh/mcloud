@@ -16,12 +16,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils";
 import { createServerSchema, type CreateServerInput } from "@/lib/validations/server";
 import {
-  MC_JAVA_VERSIONS,
   MC_BEDROCK_VERSIONS,
   JAVA_LOADERS,
   BEDROCK_LOADERS,
   FREE_TIER,
 } from "@/lib/constants";
+import { useMcVersions } from "@/hooks/useMcVersions";
 import { LoadingSpinner } from "@/components/shared/MinecraftLoader";
 import { useQuery } from "@tanstack/react-query";
 import type { Region } from "@/lib/supabase/types";
@@ -134,7 +134,8 @@ export function CreateServerWizard() {
     queryFn: () => fetch("/api/regions").then((r) => r.json()),
   });
 
-  const versions = edition === "java" ? MC_JAVA_VERSIONS : MC_BEDROCK_VERSIONS;
+  const { data: javaVersions = [] } = useMcVersions();
+  const versions = edition === "java" ? javaVersions : MC_BEDROCK_VERSIONS;
   const loaders = edition === "java" ? JAVA_LOADERS : BEDROCK_LOADERS;
 
   async function onSubmit(data: CreateServerInput) {

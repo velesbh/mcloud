@@ -12,7 +12,8 @@ import { PageLoader } from "@/components/shared/LoadingScreen";
 import { toast } from "sonner";
 import type { ModrinthSearchResult } from "@/lib/modrinth/types";
 import type { ModInstallation, Server } from "@/lib/supabase/types";
-import { MC_JAVA_VERSIONS, MODRINTH_PROJECT_TYPES } from "@/lib/constants";
+import { MODRINTH_PROJECT_TYPES } from "@/lib/constants";
+import { useMcVersions } from "@/hooks/useMcVersions";
 import { useDebounce } from "@/hooks/useDebounce";
 
 /** Map our internal loader names → Modrinth category names */
@@ -54,6 +55,7 @@ export default function ModsPage({ params }: { params: Promise<{ id: string }> }
     }
   }, [server?.game_version, version]);
 
+  const { data: mcVersions = [] } = useMcVersions();
   const serverLoader = server?.loader ?? "paper";
   const modrinthLoader = toModrinthLoader(serverLoader);
   // Use server version as default if not yet set
@@ -136,7 +138,7 @@ export default function ModsPage({ params }: { params: Promise<{ id: string }> }
             <Select value={effectiveVersion} onValueChange={setVersion}>
               <SelectTrigger className="w-32 h-9"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {MC_JAVA_VERSIONS.map((v) => (
+                {mcVersions.map((v) => (
                   <SelectItem key={v} value={v}>{v}</SelectItem>
                 ))}
               </SelectContent>

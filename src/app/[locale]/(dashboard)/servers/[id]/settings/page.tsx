@@ -5,7 +5,8 @@ import { Save, AlertTriangle, Info, Trash2 } from "lucide-react";
 import { PixelPanel, PixelButton, PixelSlider } from "@/components/pixel/PixelPanel";
 import { LoadingSpinner } from "@/components/shared/MinecraftLoader";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
-import { MC_JAVA_VERSIONS, JAVA_LOADERS } from "@/lib/constants";
+import { JAVA_LOADERS } from "@/lib/constants";
+import { useMcVersions } from "@/hooks/useMcVersions";
 import { useLocale } from "next-intl";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -31,6 +32,8 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
     ram_mb: 1024, cpu_percent: 100, disk_mb: 5120,
     startup_jar: "", java_version: "21",
   });
+
+  const { data: mcVersions = [] } = useMcVersions();
 
   const { data: server, isLoading, error: serverError } = useQuery({
     queryKey: ["server", id],
@@ -163,7 +166,7 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
               className="mt-1 w-full px-3 py-2 text-sm font-mono bg-background border-2 border-border focus:border-primary outline-none"
               style={{ borderRadius: 0 }}
             >
-              {MC_JAVA_VERSIONS.map((v) => <option key={v} value={v}>{v}</option>)}
+              {mcVersions.map((v) => <option key={v} value={v}>{v}</option>)}
             </select>
           </div>
           <div>
