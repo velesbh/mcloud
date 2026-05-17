@@ -64,6 +64,8 @@ export function FileManagerV2({ serverId }: { serverId: string }) {
   const [deleteTarget, setDeleteTarget] = useState<FsItem | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
 
   // Right-click context menu
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
@@ -157,11 +159,15 @@ export function FileManagerV2({ serverId }: { serverId: string }) {
 
   async function handleUpload(files: FileList | null) {
     if (!files?.length) return;
-    setBusy(`Uploading ${files.length} file${files.length > 1 ? "s" : ""}...`);
+    const fileArr = Array.from(files);
+    setBusy(`Uploading ${fileArr.length} file${fileArr.length > 1 ? "s" : ""}...`);
+    setUploadProgress(0);
     try {
-      for (const file of Array.from(files)) {
-        // For files > 4 MB try the presigned S3 URL path to bypass Vercel's body limit.
-        // Fall back to multipart upload if S3 isn't configured (409 response).
+      for (let fi = 0; fi < fileArr.length; fi++) {
+        const file = fileArr[fi];
+        const baseProgress = Math.round((fi / fileArr.length) * 100);
+        const sliceSize = Math.round(100 / fileArr.length);
+
         if (file.size > 4 * 1024 * 1024) {
           const presignRes = await fetch(
             `/api/servers/${serverId}/fs?filename=${encodeURIComponent(file.name)}`
@@ -170,13 +176,24 @@ export function FileManagerV2({ serverId }: { serverId: string }) {
             const { uploadUrl, downloadUrl } = await presignRes.json() as {
               uploadUrl: string; downloadUrl: string; storageKey: string;
             };
-            // Upload directly to S3 — no Vercel size limit
-            const s3Res = await fetch(uploadUrl, {
-              method: "PUT",
-              body: file,
-              headers: { "Content-Type": file.type || "application/octet-stream" },
+            // XHR gives us upload progress events; fetch does not
+            await new Promise<void>((resolve, reject) => {
+              const xhr = new XMLHttpRequest();
+              xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable) {
+                  const pct = baseProgress + Math.round((e.loaded / e.total) * sliceSize * 0.9);
+                  setUploadProgress(Math.min(pct, 99));
+                }
+              };
+              xhr.onload = () => {
+                if (xhr.status >= 200 && xhr.status < 300) resolve();
+                else reject(new Error(`S3 upload failed: ${xhr.status}`));
+              };
+              xhr.onerror = () => reject(new Error("S3 upload network error"));
+              xhr.open("PUT", uploadUrl);
+              xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+              xhr.send(file);
             });
-            if (!s3Res.ok) throw new Error(`S3 upload failed: ${s3Res.status}`);
             // Tell daemon to pull from S3
             const importRes = await fetch(`/api/servers/${serverId}/fs`, {
               method: "POST",
@@ -191,26 +208,49 @@ export function FileManagerV2({ serverId }: { serverId: string }) {
               const err = await importRes.json().catch(() => ({ error: importRes.statusText }));
               throw new Error(err.error ?? "Import failed");
             }
+            setUploadProgress(baseProgress + sliceSize);
             continue;
           }
           // S3 not configured — fall through to multipart
         }
 
-        const fd = new FormData();
-        fd.append("file", file);
-        fd.append("targetDir", cwd);
-        const res = await fetch(`/api/servers/${serverId}/fs/upload`, { method: "POST", body: fd });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({ error: res.statusText }));
-          throw new Error(err.error ?? "Upload failed");
-        }
+        // Small file — multipart upload via Vercel (progress via XHR too)
+        await new Promise<void>((resolve, reject) => {
+          const fd = new FormData();
+          fd.append("file", file);
+          fd.append("targetDir", cwd);
+          const xhr = new XMLHttpRequest();
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+              const pct = baseProgress + Math.round((e.loaded / e.total) * sliceSize);
+              setUploadProgress(Math.min(pct, 99));
+            }
+          };
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) resolve();
+            else {
+              try {
+                const body = JSON.parse(xhr.responseText);
+                reject(new Error(body.error ?? "Upload failed"));
+              } catch {
+                reject(new Error(`Upload failed: ${xhr.status}`));
+              }
+            }
+          };
+          xhr.onerror = () => reject(new Error("Upload network error"));
+          xhr.open("POST", `/api/servers/${serverId}/fs/upload`);
+          xhr.send(fd);
+        });
+        setUploadProgress(baseProgress + sliceSize);
       }
-      toast.success(`Uploaded ${files.length} file${files.length > 1 ? "s" : ""}`);
+      setUploadProgress(100);
+      toast.success(`Uploaded ${fileArr.length} file${fileArr.length > 1 ? "s" : ""}`);
       await refresh();
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
       setBusy(null);
+      setUploadProgress(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
@@ -236,9 +276,8 @@ export function FileManagerV2({ serverId }: { serverId: string }) {
 
   async function handleExport(item: FsItem) {
     setBusy(`Preparing ${item.name}${item.is_directory ? " (zipping)" : ""}...`);
+    setDownloadProgress(0);
     try {
-      // The fs POST /export route now reads bytes from daemon and streams
-      // them directly — no S3/Supabase involved, no bucket-not-found errors.
       const res = await fetch(`/api/servers/${serverId}/fs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -248,10 +287,29 @@ export function FileManagerV2({ serverId }: { serverId: string }) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
         throw new Error(err.error ?? "Download failed");
       }
-      const blob = await res.blob();
+
+      const contentLength = Number(res.headers.get("Content-Length") ?? 0);
       const contentDisposition = res.headers.get("Content-Disposition") ?? "";
       const match = contentDisposition.match(/filename="([^"]+)"/);
       const filename = match?.[1] || item.name + (item.is_directory ? ".zip" : "");
+
+      // Stream the body so we can track progress
+      const reader = res.body!.getReader();
+      const chunks: Uint8Array<ArrayBuffer>[] = [];
+      let received = 0;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        if (contentLength > 0) {
+          setDownloadProgress(Math.min(Math.round((received / contentLength) * 100), 99));
+        }
+      }
+      setDownloadProgress(100);
+
+      const blob = new Blob(chunks);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -265,6 +323,7 @@ export function FileManagerV2({ serverId }: { serverId: string }) {
       toast.error((e as Error).message);
     } finally {
       setBusy(null);
+      setDownloadProgress(null);
     }
   }
 
@@ -426,8 +485,16 @@ export function FileManagerV2({ serverId }: { serverId: string }) {
           />
         </div>
         {busy && (
-          <div className="mt-2 flex items-center gap-2 text-xs text-amber-400 font-minecraft">
-            <LoadingSpinner size={12} /> {busy}
+          <div className="mt-2 space-y-1.5">
+            <div className="flex items-center gap-2 text-xs text-amber-400 font-minecraft">
+              <LoadingSpinner size={12} /> {busy}
+            </div>
+            {(uploadProgress !== null || downloadProgress !== null) && (
+              <PixelProgressBar
+                progress={uploadProgress ?? downloadProgress ?? 0}
+                label={uploadProgress !== null ? "Upload" : "Download"}
+              />
+            )}
           </div>
         )}
         {hasSelection && (
@@ -580,13 +647,14 @@ export function FileManagerV2({ serverId }: { serverId: string }) {
               label="Unzip here"
               onClick={() => { handleUnzip(ctxMenu.item); setCtxMenu(null); }}
             />
-          ) : !ctxMenu.item.is_directory ? (
+          ) : null}
+          {!ctxMenu.item.name.endsWith(".zip") && (
             <CtxItem
               icon={<FileArchive className="w-3.5 h-3.5" />}
-              label="Zip"
+              label={ctxMenu.item.is_directory ? "Zip folder" : "Zip"}
               onClick={() => { handleZip(ctxMenu.item); setCtxMenu(null); }}
             />
-          ) : null}
+          )}
           <CtxItem
             icon={<Pencil className="w-3.5 h-3.5" />}
             label="Rename"
@@ -680,6 +748,29 @@ export function FileManagerV2({ serverId }: { serverId: string }) {
         confirmLabel={`Delete ${selectedPaths.size} items`}
         onConfirm={bulkDelete}
       />
+    </div>
+  );
+}
+
+/* ── Pixel progress bar ── */
+function PixelProgressBar({ progress, label }: { progress: number; label: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[10px] font-minecraft text-muted-foreground w-16 shrink-0">{label}</span>
+      <div
+        className="flex-1 h-3 relative"
+        style={{ background: "#1a1a1a", border: "2px solid #3a3a3a", imageRendering: "pixelated" }}
+      >
+        <div
+          className="absolute inset-0 transition-all duration-150"
+          style={{
+            width: `${progress}%`,
+            background: progress === 100 ? "#22c55e" : "#16a34a",
+            boxShadow: "inset 0 -2px 0 rgba(0,0,0,0.3)",
+          }}
+        />
+      </div>
+      <span className="text-[10px] font-minecraft text-primary w-8 text-right shrink-0">{progress}%</span>
     </div>
   );
 }
