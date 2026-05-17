@@ -141,6 +141,34 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // ── Lift profile limits so the trigger doesn't block the import ───
+  // Admin imports bypass user quotas — ensure the profile allows at least
+  // what we're about to assign. The trigger checks max_ram_mb / max_disk_mb
+  // / max_servers against existing usage, so we need headroom first.
+  const { data: currentProfile } = await admin
+    .from("profiles")
+    .select("max_servers, max_ram_mb, max_disk_mb, max_cpu_percent")
+    .eq("id", profile.id)
+    .single();
+
+  if (currentProfile) {
+    const { data: existingServers } = await admin
+      .from("servers")
+      .select("ram_mb, disk_mb, cpu_percent")
+      .eq("user_id", profile.id);
+
+    const usedRam  = (existingServers ?? []).reduce((s, r) => s + (r.ram_mb ?? 0), 0);
+    const usedDisk = (existingServers ?? []).reduce((s, r) => s + (r.disk_mb ?? 0), 0);
+    const usedServers = (existingServers ?? []).length;
+
+    await admin.from("profiles").update({
+      max_servers:     Math.max(currentProfile.max_servers,     usedServers + 1),
+      max_ram_mb:      Math.max(currentProfile.max_ram_mb,      usedRam  + ramMb),
+      max_disk_mb:     Math.max(currentProfile.max_disk_mb,     usedDisk + diskMb),
+      max_cpu_percent: Math.max(currentProfile.max_cpu_percent ?? 0, cpuPercent),
+    } as never).eq("id", profile.id);
+  }
+
   // ── Create server record ───────────────────────────────────────────
   const { data: server, error: insertErr } = await admin
     .from("servers")
