@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Package } from "lucide-react";
 import { ModpackBrowser, type PickedModpack } from "@/components/server/ModpackBrowser";
 import { useForm } from "react-hook-form";
@@ -102,12 +102,32 @@ export function CreateServerWizard() {
       edition: "java",
       game_version: "1.21.4",
       loader: "paper",
-      ram_mb: Math.min(FREE_TIER.RAM_MB, 2048),
-      disk_mb: Math.min(FREE_TIER.DISK_MB, 10240),
-      cpu_percent: Math.min(FREE_TIER.CPU_PERCENT, 200),
+      ram_mb: 512,
+      disk_mb: 1024,
+      cpu_percent: 25,
       max_players: 20,
     },
   });
+
+  // Sync slider defaults/clamps when plan quota loads asynchronously
+  useEffect(() => {
+    const cur = form.getValues();
+    // Set to plan max if current value is below a reasonable threshold (i.e. still at stub default)
+    // or clamp if it exceeds the loaded quota
+    const newRam = Math.min(Math.max(cur.ram_mb, 512), maxRamMb);
+    const newDisk = Math.min(Math.max(cur.disk_mb, 1024), maxDiskMb);
+    const newCpu = Math.min(Math.max(cur.cpu_percent, 25), maxCpuPercent);
+    // If the quota just loaded and defaults look like stubs, push to a sensible starting value
+    const ramDefault = Math.min(maxRamMb, 1024);
+    const diskDefault = Math.min(maxDiskMb, 5120);
+    const cpuDefault = Math.min(maxCpuPercent, 100);
+    if (cur.ram_mb <= 512) form.setValue("ram_mb", ramDefault, { shouldValidate: false });
+    else if (newRam !== cur.ram_mb) form.setValue("ram_mb", newRam, { shouldValidate: false });
+    if (cur.disk_mb <= 1024) form.setValue("disk_mb", diskDefault, { shouldValidate: false });
+    else if (newDisk !== cur.disk_mb) form.setValue("disk_mb", newDisk, { shouldValidate: false });
+    if (cur.cpu_percent <= 25) form.setValue("cpu_percent", cpuDefault, { shouldValidate: false });
+    else if (newCpu !== cur.cpu_percent) form.setValue("cpu_percent", newCpu, { shouldValidate: false });
+  }, [maxRamMb, maxDiskMb, maxCpuPercent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: regions = [] } = useQuery<Region[]>({
     queryKey: ["regions"],
@@ -193,7 +213,7 @@ export function CreateServerWizard() {
         ))}
       </div>
 
-      <form onSubmit={form.handleSubmit(onSubmit)}>
+      <div>
         <AnimatePresence mode="wait">
           {/* Step 1: Name & Edition */}
           {step === 0 && (
@@ -512,13 +532,18 @@ export function CreateServerWizard() {
               Next →
             </Button>
           ) : (
-            <Button type="submit" disabled={loading} className="gap-2">
+            <Button
+              type="button"
+              disabled={loading}
+              className="gap-2"
+              onClick={() => form.handleSubmit(onSubmit)()}
+            >
               {loading && <LoadingSpinner size={14} />}
               {loading ? "Creating..." : "Create Server"}
             </Button>
           )}
         </div>
-      </form>
+      </div>
 
       {modpackOpen && (
         <ModpackBrowser
