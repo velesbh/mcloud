@@ -2,14 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { dispatchFileOp } from "@/lib/server/file-ops-bridge";
+import { isS3Configured, s3Upload, s3Delete, S3_BUCKET } from "@/lib/storage/s3";
 
 /**
- * Upload bridge:
- *   1. Receive multipart file from browser
- *   2. Ensure the storage bucket exists (auto-create on first use)
- *   3. Upload to server-files/{id}/inbox/{filename}
- *   4. Tell the daemon to fetch + write into the server's filesystem
- *   5. Delete the inbox file immediately after the daemon confirms receipt
+ * Upload bridge — two storage backends supported:
+ *
+ * S3-compatible (preferred — set S3_* env vars):
+ *   1. Upload file to S3 at {serverId}/inbox/{filename}
+ *   2. Tell daemon to import-url using a presigned S3 download URL
+ *   3. Delete the S3 object after daemon confirms
+ *
+ * Supabase Storage (fallback when S3 not configured):
+ *   1. Auto-create the server-files bucket if needed
+ *   2. Upload to {serverId}/inbox/{filename}
+ *   3. Tell daemon to import using storageKey
+ *   4. Delete after daemon confirms
  */
 export async function POST(
   req: NextRequest,
@@ -40,38 +47,60 @@ export async function POST(
   const filename = file.name.replace(/[^\w.\-]/g, "_");
   const targetPath = targetDir.replace(/\/+$/, "") + "/" + filename;
   const storageKey = `${id}/inbox/${Date.now()}-${filename}`;
-
-  // Ensure bucket exists — create it if this is the first upload ever.
-  // `createBucket` is idempotent-ish: we ignore "already exists" errors.
-  const { error: bucketErr } = await admin.storage.createBucket("server-files", {
-    public: false,
-    fileSizeLimit: 256 * 1024 * 1024, // 256 MB max per file
-  });
-  if (bucketErr && !bucketErr.message.toLowerCase().includes("already exist")) {
-    return NextResponse.json({ error: `storage: ${bucketErr.message}` }, { status: 500 });
-  }
-
   const buf = Buffer.from(await file.arrayBuffer());
-  const { error: uploadError } = await admin.storage
-    .from("server-files")
-    .upload(storageKey, buf, { contentType: file.type || "application/octet-stream", upsert: true });
-  if (uploadError)
-    return NextResponse.json({ error: `storage: ${uploadError.message}` }, { status: 500 });
 
-  // Tell the daemon to pull the file from storage and write it to disk.
-  const result = await dispatchFileOp(server.node_id, id, "import", {
-    storageKey,
-    targetPath,
-  }, 120_000);
+  if (isS3Configured()) {
+    /* ── S3 path ── */
+    try {
+      await s3Upload(storageKey, buf, file.type || "application/octet-stream");
+    } catch (e) {
+      return NextResponse.json({ error: `s3: ${String(e)}` }, { status: 500 });
+    }
 
-  // Always clean up the inbox file — whether or not the daemon succeeded.
-  // The bucket is purely a transit staging area; we don't want leftover blobs.
-  await admin.storage.from("server-files").remove([storageKey]).catch(() => {/* best-effort */});
+    // Build a presigned download URL (5 min) so the daemon can pull via HTTP
+    const { s3SignedDownloadUrl } = await import("@/lib/storage/s3");
+    const downloadUrl = await s3SignedDownloadUrl(storageKey, 300);
 
-  if (!result.ok) return NextResponse.json({ error: result.error }, { status: 502 });
-  return NextResponse.json({ ok: true, path: targetPath, size: buf.length });
+    const result = await dispatchFileOp(server.node_id, id, "import-url", {
+      url: downloadUrl,
+      targetPath,
+    }, 120_000);
+
+    // Clean up the staging object regardless of result
+    await s3Delete(storageKey);
+
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: 502 });
+    return NextResponse.json({ ok: true, path: targetPath, size: buf.length, backend: "s3" });
+
+  } else {
+    /* ── Supabase Storage fallback ── */
+    // Auto-create the bucket on first use (idempotent)
+    const { error: bucketErr } = await admin.storage.createBucket("server-files", {
+      public: false,
+      fileSizeLimit: 256 * 1024 * 1024,
+    });
+    if (bucketErr && !bucketErr.message.toLowerCase().includes("already exist")) {
+      return NextResponse.json({ error: `storage: ${bucketErr.message}` }, { status: 500 });
+    }
+
+    const { error: uploadError } = await admin.storage
+      .from("server-files")
+      .upload(storageKey, buf, { contentType: file.type || "application/octet-stream", upsert: true });
+    if (uploadError)
+      return NextResponse.json({ error: `storage: ${uploadError.message}` }, { status: 500 });
+
+    const result = await dispatchFileOp(server.node_id, id, "import", {
+      storageKey,
+      targetPath,
+    }, 120_000);
+
+    // Always clean up — bucket is transit only
+    await admin.storage.from("server-files").remove([storageKey]).catch(() => {/* best-effort */});
+
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: 502 });
+    return NextResponse.json({ ok: true, path: targetPath, size: buf.length, backend: "supabase" });
+  }
 }
 
-// Allow larger uploads (Vercel's max is 4.5 MB on Hobby, higher on Pro)
 export const runtime = "nodejs";
 export const maxDuration = 60;
