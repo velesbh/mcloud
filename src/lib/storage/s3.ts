@@ -34,11 +34,21 @@ function makeClient(): S3Client | null {
   // Fall back to "auto" (valid for Cloudflare R2 and most S3-compatible providers).
   const rawRegion = process.env.S3_REGION ?? "";
   const region = /^[a-zA-Z0-9-]+$/.test(rawRegion) ? rawRegion : "auto";
+  // When a custom endpoint is set, default to path-style URLs
+  // ({endpoint}/{bucket}/key) because most S3-compatible providers
+  // (MinIO, custom proxies, etc.) don't support virtual-hosted-style
+  // ({bucket}.{endpoint}/key) which is the AWS default.
+  // Cloudflare R2 supports both, so this is safe there too.
+  // Set S3_FORCE_PATH_STYLE=false explicitly to override.
+  const forcePathStyle = process.env.S3_FORCE_PATH_STYLE === "false"
+    ? false
+    : process.env.S3_FORCE_PATH_STYLE === "true" || !!endpoint;
+
   return new S3Client({
     region,
     ...(endpoint ? { endpoint } : {}),
     credentials: { accessKeyId, secretAccessKey },
-    forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true",
+    forcePathStyle,
   });
 }
 

@@ -35,11 +35,18 @@ function makeClient(): S3Client | null {
   // a hostname and will make the AWS SDK throw. Fall back to "auto".
   const rawRegion = process.env.S3_REGION ?? "";
   const region = /^[a-zA-Z0-9-]+$/.test(rawRegion) ? rawRegion : "auto";
+  // Default to path-style when a custom endpoint is set — most S3-compatible
+  // providers don't support virtual-hosted ({bucket}.{endpoint}) style.
+  // Set S3_FORCE_PATH_STYLE=false to opt out.
+  const forcePathStyle = process.env.S3_FORCE_PATH_STYLE === "false"
+    ? false
+    : process.env.S3_FORCE_PATH_STYLE === "true" || !!endpoint;
+
   return new S3Client({
     region,
     ...(endpoint ? { endpoint } : {}),
     credentials: { accessKeyId, secretAccessKey },
-    forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true",
+    forcePathStyle,
   });
 }
 
