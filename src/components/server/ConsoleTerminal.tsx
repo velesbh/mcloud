@@ -105,6 +105,7 @@ export function ConsoleTerminal({ serverId }: ConsoleTerminalProps) {
         for (const event of events) {
           colorLine(event.line, event.source);
         }
+        term.scrollToBottom();
       } catch {}
 
       function colorLine(line: string, source: string) {
@@ -114,6 +115,7 @@ export function ConsoleTerminal({ serverId }: ConsoleTerminalProps) {
         else if (line.includes("ERROR") || line.includes("Exception")) color = "\x1b[31m";
         else if (line.includes("WARN")) color = "\x1b[33m";
         term.writeln(`${color}${line}\x1b[0m`);
+        term.scrollToBottom();
       }
 
       // Broadcast (fast)
@@ -198,6 +200,10 @@ export function ConsoleTerminal({ serverId }: ConsoleTerminalProps) {
     const cmd = input.trim();
     setInput(""); setSuggestions([]);
     pushHistory(cmd);
+    if (termRef.current) {
+      termRef.current.writeln(`\x1b[32m> ${cmd}\x1b[0m`);
+      termRef.current.scrollToBottom();
+    }
     await fetch(`/api/servers/${serverId}/console`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
