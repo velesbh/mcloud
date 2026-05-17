@@ -156,7 +156,7 @@ export async function POST(req: NextRequest) {
       disk_mb: diskMb,
       node_id: nodeId,
       allocation_id: allocation.id,
-      status: "installing",
+      status: "creating",
       last_active_at: new Date().toISOString(),
     } as never)
     .select()
