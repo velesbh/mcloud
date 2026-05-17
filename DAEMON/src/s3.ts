@@ -31,8 +31,12 @@ function makeClient(): S3Client | null {
   const accessKeyId = process.env.S3_ACCESS_KEY;
   const secretAccessKey = process.env.S3_SECRET_KEY;
   if (!accessKeyId || !secretAccessKey) return null;
+  // Sanitize region — values like "n/a" contain "/" which is invalid in
+  // a hostname and will make the AWS SDK throw. Fall back to "auto".
+  const rawRegion = process.env.S3_REGION ?? "";
+  const region = /^[a-zA-Z0-9-]+$/.test(rawRegion) ? rawRegion : "auto";
   return new S3Client({
-    region: process.env.S3_REGION ?? "auto",
+    region,
     ...(endpoint ? { endpoint } : {}),
     credentials: { accessKeyId, secretAccessKey },
     forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true",

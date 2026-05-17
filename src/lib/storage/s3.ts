@@ -29,8 +29,13 @@ function makeClient(): S3Client | null {
   const accessKeyId = process.env.S3_ACCESS_KEY;
   const secretAccessKey = process.env.S3_SECRET_KEY;
   if (!accessKeyId || !secretAccessKey) return null;
+  // Sanitize region — values like "n/a", "N/A", or anything containing
+  // non-hostname chars are invalid and will cause the AWS SDK to throw.
+  // Fall back to "auto" (valid for Cloudflare R2 and most S3-compatible providers).
+  const rawRegion = process.env.S3_REGION ?? "";
+  const region = /^[a-zA-Z0-9-]+$/.test(rawRegion) ? rawRegion : "auto";
   return new S3Client({
-    region: process.env.S3_REGION ?? "auto",
+    region,
     ...(endpoint ? { endpoint } : {}),
     credentials: { accessKeyId, secretAccessKey },
     forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true",
