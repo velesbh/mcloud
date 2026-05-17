@@ -172,16 +172,29 @@ async function importFromUrl(
   await emit(serverId, opId, "url-import-result", { targetPath, ok: true });
 }
 
+interface InjectedS3Config {
+  endpoint?: string;
+  region?: string;
+  bucket?: string;
+  accessKey?: string;
+  secretKey?: string;
+  forcePathStyle?: boolean;
+}
+
 /**
  * Export (download) a file: zip it (if directory) or copy it (if file),
  * stage it to S3 (if configured) or Supabase Storage (fallback), then
  * return a short-lived presigned URL the client can download from.
  * The staging object is deleted after the URL is generated.
+ *
+ * s3Config — credentials injected by the main app so the daemon can use
+ * the app's S3 bucket without needing its own S3 env vars.
  */
 async function exportToStorage(
   serverId: string,
   opId: string,
-  relPath: string
+  relPath: string,
+  s3Config?: InjectedS3Config,
 ) {
   const abs = resolveServerPath(serverId, relPath);
   const s = await stat(abs);
@@ -206,13 +219,47 @@ async function exportToStorage(
 
   let downloadUrl: string | null = null;
 
-  if (isS3Configured()) {
+  // Use injected S3 config from main app, or fall back to daemon's own env vars
+  const useS3 = s3Config?.accessKey && s3Config?.secretKey
+    ? true
+    : isS3Configured();
+
+  if (useS3) {
     // ── S3 path ──
-    await s3Upload(storageKey, body, contentType);
-    // 10-minute presigned URL — enough time for a browser download to start
-    downloadUrl = await s3SignedDownloadUrl(storageKey, 600);
-    // Clean up after a delay so the browser has time to initiate the download
-    setTimeout(() => { void s3Delete(storageKey); }, 30_000);
+    let upload: (key: string, buf: Buffer, ct: string) => Promise<void>;
+    let signedUrl: (key: string, exp: number) => Promise<string>;
+    let del: (key: string) => Promise<void>;
+    const bucket = s3Config?.bucket ?? process.env.S3_BUCKET ?? "mcloud-files";
+
+    if (s3Config?.accessKey && s3Config?.secretKey) {
+      // Build a one-shot client from injected credentials
+      const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = await import("@aws-sdk/client-s3");
+      const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner");
+      const rawRegion = s3Config.region ?? "";
+      const client = new S3Client({
+        region: /^[a-zA-Z0-9-]+$/.test(rawRegion) ? rawRegion : "auto",
+        ...(s3Config.endpoint ? { endpoint: s3Config.endpoint } : {}),
+        credentials: { accessKeyId: s3Config.accessKey, secretAccessKey: s3Config.secretKey },
+        forcePathStyle: s3Config.forcePathStyle ?? false,
+      });
+      upload = async (key, buf, ct) => {
+        await client.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: buf, ContentType: ct }));
+      };
+      signedUrl = (key, exp) =>
+        getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn: exp });
+      del = async (key) => {
+        try { await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })); } catch {}
+      };
+    } else {
+      // Use daemon's own env-var-based S3 client
+      upload = (key, buf, ct) => s3Upload(key, buf, ct);
+      signedUrl = (key, exp) => s3SignedDownloadUrl(key, exp);
+      del = (key) => s3Delete(key);
+    }
+
+    await upload(storageKey, body, contentType);
+    downloadUrl = await signedUrl(storageKey, 600);
+    setTimeout(() => { void del(storageKey); }, 30_000);
   } else {
     // ── Supabase Storage fallback ──
     // Auto-create bucket on first use (idempotent — ignore "already exists")
@@ -304,7 +351,7 @@ export async function handleFileOp(req: FileOpRequest) {
         await importFromUrl(serverId, opId, req.url as string, req.targetPath as string);
         break;
       case "export":
-        await exportToStorage(serverId, opId, req.path as string);
+        await exportToStorage(serverId, opId, req.path as string, req.s3Config as InjectedS3Config | undefined);
         break;
       case "zip":
         await zipPath(serverId, opId, req.sourcePath as string, req.archivePath as string);
