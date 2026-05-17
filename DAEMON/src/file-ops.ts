@@ -6,6 +6,7 @@ import AdmZip from "adm-zip";
 import { config } from "./config.js";
 import { log } from "./logger.js";
 import { supabase } from "./supabase.js";
+import { isS3Configured, s3Upload, s3Delete, s3SignedDownloadUrl } from "./s3.js";
 
 const STORAGE_BUCKET = "server-files";
 
@@ -172,9 +173,10 @@ async function importFromUrl(
 }
 
 /**
- * Export (download) a file: zip it (if directory) or copy it (if file)
- * to Supabase Storage at `exports/{server_id}/{filename}` and return
- * a signed URL the user can download from.
+ * Export (download) a file: zip it (if directory) or copy it (if file),
+ * stage it to S3 (if configured) or Supabase Storage (fallback), then
+ * return a short-lived presigned URL the client can download from.
+ * The staging object is deleted after the URL is generated.
  */
 async function exportToStorage(
   serverId: string,
@@ -202,16 +204,33 @@ async function exportToStorage(
     contentType = "application/octet-stream";
   }
 
-  const { error } = await supabase.storage.from(STORAGE_BUCKET).upload(storageKey, body, {
-    contentType,
-    upsert: true,
-  });
-  if (error) throw new Error(`storage upload: ${error.message}`);
+  let downloadUrl: string | null = null;
 
-  const { data: signed } = await supabase.storage.from(STORAGE_BUCKET).createSignedUrl(storageKey, 600);
+  if (isS3Configured()) {
+    // ── S3 path ──
+    await s3Upload(storageKey, body, contentType);
+    // 10-minute presigned URL — enough time for a browser download to start
+    downloadUrl = await s3SignedDownloadUrl(storageKey, 600);
+    // Clean up after a delay so the browser has time to initiate the download
+    setTimeout(() => { void s3Delete(storageKey); }, 30_000);
+  } else {
+    // ── Supabase Storage fallback ──
+    const { error } = await supabase.storage.from(STORAGE_BUCKET).upload(storageKey, body, {
+      contentType,
+      upsert: true,
+    });
+    if (error) throw new Error(`storage upload: ${error.message}`);
+    const { data: signed } = await supabase.storage.from(STORAGE_BUCKET).createSignedUrl(storageKey, 600);
+    downloadUrl = signed?.signedUrl ?? null;
+    // Best-effort cleanup after 60 s
+    setTimeout(() => {
+      void supabase.storage.from(STORAGE_BUCKET).remove([storageKey]);
+    }, 60_000);
+  }
+
   await emit(serverId, opId, "export-result", {
     path: relPath,
-    url: signed?.signedUrl ?? null,
+    url: downloadUrl,
     filename: exportName,
     size: body.length,
   });
