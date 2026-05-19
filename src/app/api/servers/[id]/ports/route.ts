@@ -44,7 +44,7 @@ export async function GET(
     .order("port", { ascending: true });
 
   // ── Other allocations on this node (owned by same user) — display only ─────
-  const { data: userServers = [] } = await admin
+  const { data: userServers = [] as { id: string }[] } = await admin
     .from("servers")
     .select("id")
     .eq("clerk_user_id", ownerClerkId)
