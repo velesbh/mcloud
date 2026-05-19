@@ -1,0 +1,85 @@
+/**
+ * S3-compatible storage adapter for the daemon.
+ *
+ * Mirrors the main app's src/lib/storage/s3.ts.
+ *
+ * Reads from env:
+ *   S3_ENDPOINT          — e.g. https://s3.amazonaws.com | https://minio.example.com
+ *   S3_REGION            — e.g. us-east-1 | auto (Cloudflare R2)
+ *   S3_BUCKET            — bucket name (default: mcloud-files)
+ *   S3_ACCESS_KEY        — access key / key ID
+ *   S3_SECRET_KEY        — secret access key
+ *   S3_FORCE_PATH_STYLE  — "true" for MinIO / self-hosted; omit for AWS/R2
+ *
+ * If S3_ACCESS_KEY is not set, all calls throw immediately so the caller can
+ * fall back to Supabase Storage or another mechanism.
+ */
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+export const S3_BUCKET = process.env.S3_BUCKET ?? "mcloud-files";
+function makeClient() {
+    const endpoint = process.env.S3_ENDPOINT;
+    const accessKeyId = process.env.S3_ACCESS_KEY;
+    const secretAccessKey = process.env.S3_SECRET_KEY;
+    if (!accessKeyId || !secretAccessKey)
+        return null;
+    // Sanitize region — values like "n/a" contain "/" which is invalid in
+    // a hostname and will make the AWS SDK throw. Fall back to "auto".
+    const rawRegion = process.env.S3_REGION ?? "";
+    const region = /^[a-zA-Z0-9-]+$/.test(rawRegion) ? rawRegion : "auto";
+    // Default to path-style when a custom endpoint is set — most S3-compatible
+    // providers don't support virtual-hosted ({bucket}.{endpoint}) style.
+    // Set S3_FORCE_PATH_STYLE=false to opt out.
+    const forcePathStyle = process.env.S3_FORCE_PATH_STYLE === "false"
+        ? false
+        : process.env.S3_FORCE_PATH_STYLE === "true" || !!endpoint;
+    return new S3Client({
+        region,
+        ...(endpoint ? { endpoint } : {}),
+        credentials: { accessKeyId, secretAccessKey },
+        forcePathStyle,
+    });
+}
+let _client = undefined;
+function getClient() {
+    if (_client === undefined)
+        _client = makeClient();
+    if (!_client)
+        throw new Error("S3 not configured — set S3_ACCESS_KEY and S3_SECRET_KEY");
+    return _client;
+}
+export function isS3Configured() {
+    return !!(process.env.S3_ACCESS_KEY && process.env.S3_SECRET_KEY);
+}
+/** Upload a Buffer to S3. */
+export async function s3Upload(key, body, contentType = "application/octet-stream") {
+    await getClient().send(new PutObjectCommand({ Bucket: S3_BUCKET, Key: key, Body: body, ContentType: contentType }));
+}
+/** Delete an object from S3 (best-effort — does not throw on 404). */
+export async function s3Delete(key) {
+    try {
+        await getClient().send(new DeleteObjectCommand({ Bucket: S3_BUCKET, Key: key }));
+    }
+    catch {
+        // best-effort
+    }
+}
+/** Generate a presigned download URL (default 5-min expiry). */
+export async function s3SignedDownloadUrl(key, expiresIn = 300) {
+    return getSignedUrl(getClient(), new GetObjectCommand({ Bucket: S3_BUCKET, Key: key }), { expiresIn });
+}
+/** Generate a presigned upload URL. */
+export async function s3SignedUploadUrl(key, expiresIn = 300) {
+    return getSignedUrl(getClient(), new PutObjectCommand({ Bucket: S3_BUCKET, Key: key }), { expiresIn });
+}
+/** Check if an object exists. */
+export async function s3Exists(key) {
+    try {
+        await getClient().send(new HeadObjectCommand({ Bucket: S3_BUCKET, Key: key }));
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+//# sourceMappingURL=s3.js.map
