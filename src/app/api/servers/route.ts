@@ -10,11 +10,26 @@ export async function GET() {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase
+  // Admins use the service-role client and see all servers (for the admin panel).
+  // Regular users always get an explicit clerk_user_id filter — never rely on RLS alone.
+  const { isAdmin } = await import("@/lib/clerk/auth");
+  const adminAccess = await isAdmin();
+
+  const supabase = adminAccess
+    ? createAdminSupabaseClient()
+    : await createServerSupabaseClient();
+
+  let query = supabase
     .from("servers")
     .select("*, allocations!servers_allocation_id_fkey(ip, port), regions!servers_region_id_fkey(name, flag_emoji)")
     .order("created_at", { ascending: false });
+
+  // Hard application-level filter for non-admins — belt AND suspenders with RLS
+  if (!adminAccess) {
+    query = query.eq("clerk_user_id", userId);
+  }
+
+  const { data, error } = await query;
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data ?? []);
