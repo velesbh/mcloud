@@ -6,7 +6,7 @@ import { log } from "./logger.js";
 import { supabase } from "./supabase.js";
 import { broadcastConsole, broadcastServerStatus, persistConsoleLine } from "./console-bridge.js";
 import { ensureJar } from "./jar-manager.js";
-import { requiredJavaMajor } from "./java-installer.js";
+import { installJava, requiredJavaMajor, javaBinForMajor } from "./java-installer.js";
 import { installModpack } from "./modpack-installer.js";
 import { dockerAvailable, ensureImage, imageForJava, killContainer, removeContainer, containerName, spawnDockerJava, stopContainer, } from "./docker-runner.js";
 const procs = new Map();
@@ -172,25 +172,41 @@ export async function startServer(serverId) {
     const javaMajor = requestedJavaMajor && !isNaN(requestedJavaMajor)
         ? requestedJavaMajor
         : requiredJavaMajor(srv.game_version);
-    if (!dockerAvailable()) {
-        await broadcastConsole(serverId, "[error] Docker is not installed on this node. Install it with: apt-get install -y docker.io", "system");
-        await setStatus(serverId, "error");
-        return;
-    }
-    const image = imageForJava(javaMajor);
-    const ok = await ensureImage(image, (line) => {
-        void broadcastConsole(serverId, `[docker] ${line}`, "system");
-    });
-    if (!ok) {
-        await broadcastConsole(serverId, `[error] Failed to pull image ${image}.`, "system");
-        await setStatus(serverId, "error");
-        return;
-    }
-    await broadcastConsole(serverId, `> Starting in container: ${image} (Java ${javaMajor})`, "system");
     const xmx = `-Xmx${srv.ram_mb}M`;
     const xms = `-Xms${Math.floor(srv.ram_mb / 2)}M`;
     const javaArgs = [xmx, xms, "-jar", jarRel, "nogui"];
-    await spawnDockerised(serverId, dir, image, srv.ram_mb, srv.cpu_percent ?? 100, javaArgs, srv.game_version);
+    // ── Containerised path (preferred) ────────────────────────────────
+    if (dockerAvailable()) {
+        const image = imageForJava(javaMajor);
+        const ok = await ensureImage(image, (line) => {
+            void broadcastConsole(serverId, `[docker] ${line}`, "system");
+        });
+        if (ok) {
+            await broadcastConsole(serverId, `> Starting in container: ${image} (Java ${javaMajor})`, "system");
+            await spawnDockerised(serverId, dir, image, srv.ram_mb, srv.cpu_percent ?? 100, javaArgs, srv.game_version);
+            return;
+        }
+        await broadcastConsole(serverId, `[warn] Failed to pull ${image} — falling back to host Java`, "system");
+    }
+    // ── Legacy host-Java path (backwards-compat for nodes without Docker) ──
+    await broadcastConsole(serverId, `> Docker not available — using host Java ${javaMajor}`, "system");
+    let resolvedJava = javaBinForMajor(javaMajor);
+    if (resolvedJava === "java") {
+        await broadcastConsole(serverId, `> Java ${javaMajor} not found — installing via apt...`, "system");
+        const installed = await installJava(srv.game_version, serverId, javaMajor);
+        if (!installed) {
+            await broadcastConsole(serverId, `[error] Failed to install Java ${javaMajor}. Install Docker (apt-get install -y docker.io) or Java manually.`, "system");
+            await setStatus(serverId, "error");
+            return;
+        }
+        resolvedJava = javaBinForMajor(javaMajor);
+        if (resolvedJava === "java")
+            resolvedJava = config.javaBin || "java";
+    }
+    await broadcastConsole(serverId, `> Using Java ${javaMajor}: ${resolvedJava}`, "system");
+    // Jar inside the host dir — pass absolute path
+    const hostJarArgs = [xmx, xms, "-jar", path.join(dir, jarRel), "nogui"];
+    await spawnDirect(serverId, resolvedJava, hostJarArgs, dir, srv.game_version);
 }
 /**
  * Wire up stdout/stderr/event handlers around a `docker run` child process.
