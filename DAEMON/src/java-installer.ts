@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { log } from "./logger.js";
 import { broadcastConsole } from "./console-bridge.js";
@@ -19,17 +19,28 @@ export function requiredJavaMajor(gameVersion: string): number {
 
 /**
  * Returns the path to the java binary for a given major version.
- * Checks common OpenJDK install paths; falls back to `java` on $PATH.
+ * Checks known paths first, then falls back to `find /usr/lib/jvm`
+ * so it works regardless of architecture or package naming.
  */
 export function javaBinForMajor(major: number): string {
   const candidates = [
     `/usr/lib/jvm/java-${major}-openjdk-amd64/bin/java`,
+    `/usr/lib/jvm/java-${major}-openjdk-arm64/bin/java`,
     `/usr/lib/jvm/java-${major}-openjdk/bin/java`,
     `/usr/lib/jvm/temurin-${major}/bin/java`,
+    `/usr/lib/jvm/temurin-${major}-amd64/bin/java`,
   ];
   for (const p of candidates) {
     if (existsSync(p)) return p;
   }
+  // Last resort: ask the filesystem directly
+  try {
+    const found = execSync(
+      `find /usr/lib/jvm -name "java" -path "*java-${major}*" -type f 2>/dev/null | head -1`,
+      { encoding: "utf8", timeout: 5000 }
+    ).trim();
+    if (found) return found;
+  } catch { /* ignore */ }
   return "java";
 }
 
