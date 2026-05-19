@@ -15,12 +15,9 @@ export async function GET(
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  const admin = createAdminSupabaseClient();
 
-  // Admins use the service-role client to bypass RLS and see any server
-  const adminAccess = await isAdmin();
-  const client = adminAccess ? createAdminSupabaseClient() : await createServerSupabaseClient();
-
-  const { data, error } = await client
+  const { data, error } = await admin
     .from("servers")
     .select("*, allocations!servers_allocation_id_fkey(ip, port), regions(name, flag_emoji, slug), nodes(name, fqdn)")
     .eq("id", id)
@@ -34,6 +31,20 @@ export async function GET(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   if (!data) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  // Explicit access check — never rely solely on RLS
+  const adminAccess = await isAdmin();
+  if (!adminAccess && data.clerk_user_id !== userId) {
+    // Check if caller is a collaborator
+    const { data: collab } = await admin
+      .from("server_collaborators")
+      .select("id")
+      .eq("server_id", id)
+      .eq("clerk_user_id", userId)
+      .maybeSingle();
+    if (!collab) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   return NextResponse.json(data);
 }
 
