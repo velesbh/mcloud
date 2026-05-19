@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { log } from "./logger.js";
 import { broadcastConsole } from "./console-bridge.js";
 
@@ -9,21 +10,39 @@ import { broadcastConsole } from "./console-bridge.js";
  * Java 17 — 1.17 – 1.20.4
  * Java 8  — ≤ 1.16
  */
-export function requiredJavaMajor(gameVersion: string): 8 | 17 | 21 {
+export function requiredJavaMajor(gameVersion: string): number {
   const [maj, min] = gameVersion.split(".").map(Number);
   if (maj > 1 || (maj === 1 && min >= 21)) return 21;
   if (maj === 1 && min >= 17) return 17;
   return 8;
 }
 
+/**
+ * Returns the path to the java binary for a given major version.
+ * Checks common OpenJDK install paths; falls back to `java` on $PATH.
+ */
+export function javaBinForMajor(major: number): string {
+  const candidates = [
+    `/usr/lib/jvm/java-${major}-openjdk-amd64/bin/java`,
+    `/usr/lib/jvm/java-${major}-openjdk/bin/java`,
+    `/usr/lib/jvm/temurin-${major}/bin/java`,
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+  return "java";
+}
+
 /** Debian/Ubuntu package name for a given Java major version. */
-function javaPackage(major: 8 | 17 | 21): string {
-  const map: Record<number, string> = {
+function javaPackage(major: number): string {
+  const known: Record<number, string> = {
     8:  "openjdk-8-jre-headless",
+    11: "openjdk-11-jre-headless",
     17: "openjdk-17-jre-headless",
     21: "openjdk-21-jre-headless",
+    25: "openjdk-25-jre-headless",
   };
-  return map[major];
+  return known[major] ?? `openjdk-${major}-jre-headless`;
 }
 
 /**
@@ -67,9 +86,10 @@ function runStreamed(
  */
 export async function installJava(
   gameVersion: string,
-  serverId: string
+  serverId: string,
+  overrideMajor?: number
 ): Promise<boolean> {
-  const major = requiredJavaMajor(gameVersion);
+  const major = overrideMajor ?? requiredJavaMajor(gameVersion);
   const pkg   = javaPackage(major);
 
   log.info("auto-installing java", { major, pkg, serverId });

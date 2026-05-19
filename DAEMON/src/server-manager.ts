@@ -6,7 +6,7 @@ import { log } from "./logger.js";
 import { supabase } from "./supabase.js";
 import { broadcastConsole, broadcastServerStatus, persistConsoleLine } from "./console-bridge.js";
 import { ensureJar } from "./jar-manager.js";
-import { installJava, requiredJavaMajor } from "./java-installer.js";
+import { installJava, requiredJavaMajor, javaBinForMajor } from "./java-installer.js";
 import { installModpack } from "./modpack-installer.js";
 
 interface Running {
@@ -111,16 +111,21 @@ async function spawnServer(
 
     if (nodeErr.code === "ENOENT" && !isRetry) {
       // Java not found — try to install it, then retry once
-      const major = requiredJavaMajor(gameVersion);
+      // Try to detect requested major from the cmd path (e.g. /usr/lib/jvm/java-25-.../bin/java)
+      const cmdMajorMatch = cmd.match(/java-(\d+)-/);
+      const major = cmdMajorMatch ? parseInt(cmdMajorMatch[1]) : requiredJavaMajor(gameVersion);
       await broadcastConsole(
         serverId,
         `[daemon] Java ${major} not found — attempting auto-install...`,
         "system"
       );
-      const ok = await installJava(gameVersion, serverId);
+      const ok = await installJava(gameVersion, serverId, major);
       if (ok) {
-        await broadcastConsole(serverId, "[daemon] Retrying server start with new Java...", "system");
-        await spawnServer(serverId, cmd, args, cwd, gameVersion, true);
+        // Re-resolve the binary after install
+        const newCmd = javaBinForMajor(major);
+        const retryCmd = newCmd !== "java" ? newCmd : cmd;
+        await broadcastConsole(serverId, `[daemon] Retrying with ${retryCmd}...`, "system");
+        await spawnServer(serverId, retryCmd, args, cwd, gameVersion, true);
       } else {
         await broadcastConsole(
           serverId,
@@ -247,7 +252,22 @@ export async function startServer(serverId: string) {
       }
     }
 
-    cmd = config.javaBin;
+    // Pick Java binary: honour java_version from env_vars, else fall back to config or system java
+    const requestedJavaMajor = typeof envVars.java_version === "string" && envVars.java_version.trim()
+      ? parseInt(envVars.java_version.trim(), 10)
+      : null;
+    const javaMajor = requestedJavaMajor && !isNaN(requestedJavaMajor)
+      ? requestedJavaMajor
+      : requiredJavaMajor(srv.game_version);
+    const resolvedJava = javaBinForMajor(javaMajor);
+
+    if (resolvedJava !== "java") {
+      await broadcastConsole(serverId, `> Using Java ${javaMajor}: ${resolvedJava}`, "system");
+    } else if (config.javaBin && config.javaBin !== "java") {
+      // fall back to daemon-configured binary
+    }
+
+    cmd = resolvedJava !== "java" ? resolvedJava : (config.javaBin || "java");
     const xmx = `-Xmx${srv.ram_mb}M`;
     const xms = `-Xms${Math.floor(srv.ram_mb / 2)}M`;
     args = [xmx, xms, "-jar", jar, "nogui"];
