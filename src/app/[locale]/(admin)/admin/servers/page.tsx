@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Play, Square, RotateCcw, Zap, ArrowRightLeft, WifiOff, Upload, Network } from "lucide-react";
+import { Play, Square, RotateCcw, Zap, ArrowRightLeft, WifiOff, Upload, Network, Pencil } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { useLocale } from "next-intl";
 import { PageLoader } from "@/components/shared/LoadingScreen";
@@ -41,6 +42,9 @@ export default function AdminServersPage() {
   const [allocTarget, setAllocTarget] = useState<Server | null>(null);
   const [allocating, setAllocating] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null); // `${serverId}:${action}`
+  const [editAllocTarget, setEditAllocTarget] = useState<Server | null>(null);
+  const [editAllocValue, setEditAllocValue] = useState("");
+  const [editAllocSaving, setEditAllocSaving] = useState(false);
 
   const { data: servers = [], isLoading } = useQuery<(Server & { allocations: any; nodes: any })[]>({
     queryKey: ["admin-servers"],
@@ -128,6 +132,36 @@ export default function AdminServersPage() {
       }
     } finally {
       setAllocating(false);
+    }
+  }
+
+  async function editAllocation() {
+    if (!editAllocTarget || !editAllocValue.trim()) return;
+    setEditAllocSaving(true);
+    try {
+      const trimmed = editAllocValue.trim();
+      // Accept "ip:port" text or a raw UUID
+      const colonIdx = trimmed.lastIndexOf(":");
+      const body = colonIdx > 0 && colonIdx < trimmed.length - 1
+        ? { ip: trimmed.slice(0, colonIdx), port: parseInt(trimmed.slice(colonIdx + 1)) }
+        : { allocation_id: trimmed };
+
+      const res = await fetch(`/api/admin/servers/${editAllocTarget.id}/allocation`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(`Allocation updated for ${editAllocTarget.name}`);
+        qc.invalidateQueries({ queryKey: ["admin-servers"] });
+        setEditAllocTarget(null);
+        setEditAllocValue("");
+      } else {
+        toast.error(data.error ?? "Failed to update allocation");
+      }
+    } finally {
+      setEditAllocSaving(false);
     }
   }
 
@@ -295,6 +329,26 @@ export default function AdminServersPage() {
                           </TooltipTrigger>
                           <TooltipContent>Force claim a free port</TooltipContent>
                         </Tooltip>
+
+                        {/* Edit Allocation */}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                              onClick={() => {
+                                const alloc = (server as any).allocations;
+                                const cur = alloc ? `${alloc.ip}:${alloc.port}` : "";
+                                setEditAllocValue(cur);
+                                setEditAllocTarget(server);
+                              }}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Edit primary allocation</TooltipContent>
+                        </Tooltip>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -322,6 +376,38 @@ export default function AdminServersPage() {
               <Button onClick={forceAllocate} disabled={allocating} className="gap-2">
                 {allocating && <LoadingSpinner size={12} />}
                 Claim Port
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Allocation Dialog */}
+        <Dialog open={!!editAllocTarget} onOpenChange={(o) => { if (!o) { setEditAllocTarget(null); setEditAllocValue(""); } }}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Edit Allocation — {editAllocTarget?.name}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <p className="text-sm text-muted-foreground">
+                Type an <code className="font-mono text-xs bg-muted px-1">ip:port</code> (e.g. <code className="font-mono text-xs bg-muted px-1">203.0.113.1:25565</code>) or paste an allocation UUID.
+                The old primary allocation will be freed automatically.
+              </p>
+              <div className="space-y-1">
+                <Label>New allocation</Label>
+                <Input
+                  value={editAllocValue}
+                  onChange={(e) => setEditAllocValue(e.target.value)}
+                  placeholder="203.0.113.1:25565"
+                  className="font-mono text-sm"
+                  onKeyDown={(e) => e.key === "Enter" && editAllocation()}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setEditAllocTarget(null); setEditAllocValue(""); }}>Cancel</Button>
+              <Button onClick={editAllocation} disabled={editAllocSaving || !editAllocValue.trim()} className="gap-2">
+                {editAllocSaving && <LoadingSpinner size={12} />}
+                Save
               </Button>
             </DialogFooter>
           </DialogContent>

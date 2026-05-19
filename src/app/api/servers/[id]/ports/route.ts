@@ -126,14 +126,19 @@ export async function POST(
   }
 
   // Grab the lowest free port on this node
-  const { data: free } = await admin
+  const { data: free, error: freeErr } = await admin
     .from("allocations")
     .select("id, ip, local_ip, port")
     .eq("node_id", r.server.node_id!)
-    .is("server_id", null)
+    .filter("server_id", "is", null)
     .order("port", { ascending: true })
     .limit(1)
     .maybeSingle();
+
+  if (freeErr) {
+    console.error("[ports POST] free query error:", freeErr);
+    return NextResponse.json({ error: "DB error", message: freeErr.message }, { status: 500 });
+  }
 
   if (!free) {
     return NextResponse.json(
@@ -142,10 +147,15 @@ export async function POST(
     );
   }
 
-  await admin
+  const { error: updateErr } = await admin
     .from("allocations")
     .update({ server_id: id, assigned_at: new Date().toISOString() })
     .eq("id", free.id);
+
+  if (updateErr) {
+    console.error("[ports POST] update error:", updateErr);
+    return NextResponse.json({ error: "Failed to assign port", message: updateErr.message }, { status: 500 });
+  }
 
   return NextResponse.json({ ok: true, claimed: free });
 }
