@@ -41,6 +41,7 @@ export default function AdminServersPage() {
   const [migrating, setMigrating] = useState(false);
   const [allocTarget, setAllocTarget] = useState<Server | null>(null);
   const [allocating, setAllocating] = useState(false);
+  const [allocSpecific, setAllocSpecific] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null); // `${serverId}:${action}`
   const [editAllocTarget, setEditAllocTarget] = useState<Server | null>(null);
   const [editAllocValue, setEditAllocValue] = useState("");
@@ -117,18 +118,33 @@ export default function AdminServersPage() {
     if (!allocTarget) return;
     setAllocating(true);
     try {
-      const res = await fetch(`/api/servers/${allocTarget.id}/ports`, {
+      const trimmed = allocSpecific.trim();
+      let body: Record<string, unknown>;
+      if (trimmed) {
+        // Specific ip:port provided
+        const colonIdx = trimmed.lastIndexOf(":");
+        if (colonIdx > 0 && colonIdx < trimmed.length - 1) {
+          body = { ip: trimmed.slice(0, colonIdx), port: parseInt(trimmed.slice(colonIdx + 1)) };
+        } else {
+          body = { allocation_id: trimmed };
+        }
+      } else {
+        body = { action: "claim" };
+      }
+
+      const res = await fetch(`/api/admin/servers/${allocTarget.id}/ports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "claim" }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (res.ok) {
-        toast.success(`Claimed ${data.claimed.ip}:${data.claimed.port} for ${allocTarget.name}`);
+        toast.success(`Assigned ${data.claimed.ip}:${data.claimed.port} to ${allocTarget.name}`);
         qc.invalidateQueries({ queryKey: ["admin-servers"] });
         setAllocTarget(null);
+        setAllocSpecific("");
       } else {
-        toast.error(data.message ?? data.error ?? "Failed to allocate port");
+        toast.error(data.error ?? "Failed to allocate port");
       }
     } finally {
       setAllocating(false);
@@ -359,23 +375,36 @@ export default function AdminServersPage() {
         </Card>
 
         {/* Force Allocate Dialog */}
-        <Dialog open={!!allocTarget} onOpenChange={(o) => !o && setAllocTarget(null)}>
+        <Dialog open={!!allocTarget} onOpenChange={(o) => { if (!o) { setAllocTarget(null); setAllocSpecific(""); } }}>
           <DialogContent className="max-w-sm">
             <DialogHeader>
-              <DialogTitle>Force Claim Port — {allocTarget?.name}</DialogTitle>
+              <DialogTitle>Add Port — {allocTarget?.name}</DialogTitle>
             </DialogHeader>
-            <p className="text-sm text-muted-foreground py-2">
-              This will assign the next free allocation on{" "}
-              <span className="font-medium text-foreground">
-                {nodes.find((n) => n.id === allocTarget?.node_id)?.name ?? "this node"}
-              </span>{" "}
-              to the server, bypassing the user&apos;s port quota.
-            </p>
+            <div className="space-y-3 py-2">
+              <p className="text-sm text-muted-foreground">
+                Leave blank to grab the next free port on{" "}
+                <span className="font-medium text-foreground">
+                  {nodes.find((n) => n.id === allocTarget?.node_id)?.name ?? "this node"}
+                </span>
+                , or type a specific <code className="font-mono text-xs bg-muted px-1 rounded">ip:port</code> to
+                force-assign it. User quota is bypassed.
+              </p>
+              <div className="space-y-1">
+                <Label>Specific allocation (optional)</Label>
+                <Input
+                  value={allocSpecific}
+                  onChange={(e) => setAllocSpecific(e.target.value)}
+                  placeholder="203.0.113.1:25566 or leave blank"
+                  className="font-mono text-sm"
+                  onKeyDown={(e) => e.key === "Enter" && forceAllocate()}
+                />
+              </div>
+            </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setAllocTarget(null)}>Cancel</Button>
+              <Button variant="outline" onClick={() => { setAllocTarget(null); setAllocSpecific(""); }}>Cancel</Button>
               <Button onClick={forceAllocate} disabled={allocating} className="gap-2">
                 {allocating && <LoadingSpinner size={12} />}
-                Claim Port
+                {allocSpecific.trim() ? "Assign Port" : "Claim Next Free"}
               </Button>
             </DialogFooter>
           </DialogContent>
