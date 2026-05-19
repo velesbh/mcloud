@@ -40,12 +40,33 @@ async function ensureEula(dir: string) {
  * the next start. We delete all session.lock files before launching.
  */
 async function clearSessionLocks(dir: string) {
-  const candidates = [
-    path.join(dir, "world", "session.lock"),
-    path.join(dir, "world_nether", "DIM-1", "session.lock"),
-    path.join(dir, "world_the_end", "DIM1", "session.lock"),
-  ];
-  await Promise.all(candidates.map((p) => rm(p, { force: true })));
+  // Walk the entire server directory and delete every session.lock found.
+  // This handles custom world names and nested dimension directories.
+  const { readdir, stat } = await import("node:fs/promises");
+
+  async function walk(d: string, depth = 0): Promise<void> {
+    if (depth > 6) return; // safety limit
+    let entries: string[];
+    try {
+      entries = await readdir(d);
+    } catch {
+      return;
+    }
+    await Promise.all(entries.map(async (name) => {
+      const full = path.join(d, name);
+      if (name === "session.lock") {
+        await rm(full, { force: true });
+        log.info("cleared session.lock", { path: full });
+      } else {
+        try {
+          const s = await stat(full);
+          if (s.isDirectory()) await walk(full, depth + 1);
+        } catch { /* ignore */ }
+      }
+    }));
+  }
+
+  await walk(dir);
 }
 
 async function setStatus(serverId: string, status: string) {
