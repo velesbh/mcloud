@@ -273,22 +273,30 @@ export async function startServer(serverId: string) {
       }
     }
 
-    // Pick Java binary: honour java_version from env_vars, else fall back to config or system java
+    // Pick Java binary: honour java_version from env_vars, else derive from game version
     const requestedJavaMajor = typeof envVars.java_version === "string" && envVars.java_version.trim()
       ? parseInt(envVars.java_version.trim(), 10)
       : null;
     const javaMajor = requestedJavaMajor && !isNaN(requestedJavaMajor)
       ? requestedJavaMajor
       : requiredJavaMajor(srv.game_version);
-    const resolvedJava = javaBinForMajor(javaMajor);
 
-    if (resolvedJava !== "java") {
-      await broadcastConsole(serverId, `> Using Java ${javaMajor}: ${resolvedJava}`, "system");
-    } else if (config.javaBin && config.javaBin !== "java") {
-      // fall back to daemon-configured binary
+    // Check if the right Java is installed; auto-install if not
+    let resolvedJava = javaBinForMajor(javaMajor);
+    if (resolvedJava === "java") {
+      await broadcastConsole(serverId, `> Java ${javaMajor} not found — installing...`, "system");
+      const ok = await installJava(srv.game_version, serverId, javaMajor);
+      if (!ok) {
+        await broadcastConsole(serverId, `[error] Failed to install Java ${javaMajor}. Install manually: apt-get install -y openjdk-${javaMajor}-jdk`, "system");
+        await setStatus(serverId, "error");
+        return;
+      }
+      resolvedJava = javaBinForMajor(javaMajor);
+      if (resolvedJava === "java") resolvedJava = config.javaBin || "java";
     }
 
-    cmd = resolvedJava !== "java" ? resolvedJava : (config.javaBin || "java");
+    await broadcastConsole(serverId, `> Using Java ${javaMajor}: ${resolvedJava}`, "system");
+    cmd = resolvedJava;
     const xmx = `-Xmx${srv.ram_mb}M`;
     const xms = `-Xms${Math.floor(srv.ram_mb / 2)}M`;
     args = [xmx, xms, "-jar", jar, "nogui"];
