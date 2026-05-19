@@ -24,7 +24,12 @@ export default function UsersPage({ params }: { params: Promise<{ id: string }> 
 
   const { data: collaborators = [], isLoading } = useQuery<ServerCollaborator[]>({
     queryKey: ["collaborators", id],
-    queryFn: () => fetch(`/api/servers/${id}/collaborators`).then((r) => r.json()),
+    queryFn: async () => {
+      const res = await fetch(`/api/servers/${id}/collaborators`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    },
   });
 
   const isOwner = server?.clerk_user_id === userId;

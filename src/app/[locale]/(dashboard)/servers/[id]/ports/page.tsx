@@ -1,6 +1,6 @@
 "use client";
 import { use } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Network, Plus, Copy, X, Star, AlertTriangle } from "lucide-react";
 import { PixelPanel, PixelButton } from "@/components/pixel/PixelPanel";
 import { LoadingSpinner } from "@/components/shared/MinecraftLoader";
@@ -18,11 +18,15 @@ interface PortData {
 
 export default function PortsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const qc = useQueryClient();
-  const { data, isLoading } = useQuery<PortData>({
+  const { data, isLoading, refetch } = useQuery<PortData>({
     queryKey: ["ports", id],
-    queryFn: () => fetch(`/api/servers/${id}/ports`).then((r) => r.json()),
-    refetchInterval: 15_000,
+    queryFn: async () => {
+      const res = await fetch(`/api/servers/${id}/ports`);
+      if (!res.ok) return null;
+      return res.json();
+    },
+    refetchInterval: 5_000,
+    staleTime: 0,
   });
 
   async function claim() {
@@ -33,7 +37,7 @@ export default function PortsPage({ params }: { params: Promise<{ id: string }> 
     const out = await res.json();
     if (res.ok) {
       toast.success(`Claimed ${out.claimed.ip}:${out.claimed.port}`);
-      qc.invalidateQueries({ queryKey: ["ports", id] });
+      await refetch();
     } else {
       toast.error(out.message ?? out.error ?? "Failed");
     }
@@ -47,7 +51,7 @@ export default function PortsPage({ params }: { params: Promise<{ id: string }> 
     const out = await res.json();
     if (res.ok) {
       toast.success("Port released");
-      qc.invalidateQueries({ queryKey: ["ports", id] });
+      await refetch();
     } else {
       toast.error(out.error ?? "Failed");
     }
