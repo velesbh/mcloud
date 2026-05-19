@@ -173,11 +173,13 @@ export async function POST(req: NextRequest) {
   }
 
   // Pick a free allocation from the chosen node — admin must add them manually
+  // Prefer the node's default allocation; fall back to lowest free port
   const { data: allocation } = await adminSupabase
     .from("allocations")
     .select("id, ip, local_ip, port")
     .eq("node_id", pickedNodeId)
     .is("server_id", null)
+    .order("is_default", { ascending: false })
     .order("port", { ascending: true })
     .limit(1)
     .maybeSingle();

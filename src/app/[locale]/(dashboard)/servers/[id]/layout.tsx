@@ -3,7 +3,7 @@ import { usePathname } from "next/navigation";
 import { useLocale } from "next-intl";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { Terminal, FolderOpen, Package, Archive, Settings, LayoutDashboard, ChevronLeft, BarChart3, Globe, Network, SlidersHorizontal } from "lucide-react";
+import { Terminal, FolderOpen, Package, Archive, Settings, LayoutDashboard, ChevronLeft, BarChart3, Globe, Network, SlidersHorizontal, Users } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { use } from "react";
 
@@ -17,6 +17,7 @@ const tabs = [
   { key: "properties", label: "Properties", icon: SlidersHorizontal, href: "/properties" },
   { key: "ports", label: "Ports", icon: Network, href: "/ports" },
   { key: "backups", label: "Backups", icon: Archive, href: "/backups" },
+  { key: "users", label: "Users", icon: Users, href: "/users" },
   { key: "settings", label: "Settings", icon: Settings, href: "/settings" },
 ];
 

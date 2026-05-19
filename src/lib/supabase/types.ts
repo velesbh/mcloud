@@ -185,6 +185,7 @@ export interface Database {
           server_id: string | null;
           assigned_at: string | null;
           created_at: string;
+          is_default: boolean;
         };
         Insert: {
           id?: string;
@@ -195,6 +196,7 @@ export interface Database {
           server_id?: string | null;
           assigned_at?: string | null;
           created_at?: string;
+          is_default?: boolean;
         };
         Update: {
           id?: string;
@@ -203,6 +205,27 @@ export interface Database {
           port?: number;
           server_id?: string | null;
           assigned_at?: string | null;
+          is_default?: boolean;
+        };
+        Relationships: [];
+      };
+      server_collaborators: {
+        Row: {
+          id: string;
+          server_id: string;
+          clerk_user_id: string;
+          email: string;
+          added_at: string;
+        };
+        Insert: {
+          id?: string;
+          server_id: string;
+          clerk_user_id: string;
+          email: string;
+          added_at?: string;
+        };
+        Update: {
+          email?: string;
         };
         Relationships: [];
       };
@@ -640,3 +663,4 @@ export type PublicIp = Database["mcloud"]["Tables"]["public_ips"]["Row"];
 export type BillingPlan = Database["mcloud"]["Tables"]["billing_plans"]["Row"];
 export type InviteLink = Database["mcloud"]["Tables"]["invite_links"]["Row"];
 export type ServerMetric = Database["mcloud"]["Tables"]["server_metrics"]["Row"];
+export type ServerCollaborator = Database["mcloud"]["Tables"]["server_collaborators"]["Row"];

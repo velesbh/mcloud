@@ -1,7 +1,7 @@
 "use client";
 import { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -130,6 +130,20 @@ export default function AllocationsPage() {
     toast.success("Allocation deleted");
   }
 
+  async function setDefault(id: string, currentlyDefault: boolean) {
+    const res = await fetch(`/api/allocations/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_default: !currentlyDefault }),
+    });
+    if (res.ok) {
+      qc.invalidateQueries({ queryKey: ["allocations"] });
+      toast.success(currentlyDefault ? "Default cleared" : "Set as default port");
+    } else {
+      toast.error("Failed to update");
+    }
+  }
+
   if (isLoading) return <PageLoader />;
 
   return (
@@ -163,6 +177,7 @@ export default function AllocationsPage() {
                     <TableHead>Local IP (bind addr)</TableHead>
                     <TableHead>Server</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead className="w-8 text-center">Default</TableHead>
                     <TableHead className="w-12" />
                   </TableRow>
                 </TableHeader>
@@ -189,6 +204,15 @@ export default function AllocationsPage() {
                         >
                           {alloc.server_id ? "Assigned" : "Free"}
                         </Badge>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <button
+                          onClick={() => setDefault(alloc.id, !!alloc.is_default)}
+                          title={alloc.is_default ? "Default port — click to unset" : "Set as default port"}
+                          className={`transition-colors ${alloc.is_default ? "text-amber-400 hover:text-amber-300" : "text-muted-foreground hover:text-amber-400"}`}
+                        >
+                          <Star className={`w-4 h-4 ${alloc.is_default ? "fill-amber-400" : ""}`} />
+                        </button>
                       </TableCell>
                       <TableCell>
                         <button

@@ -13,11 +13,25 @@ export async function PATCH(
   if (!(await isAdmin())) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { id } = await params;
-  const rawBody = await req.json();
+  const rawBody = await req.json() as Database["mcloud"]["Tables"]["allocations"]["Update"];
   const supabase = createAdminSupabaseClient();
+
+  // If setting as default, first unset any existing default on the same node
+  if (rawBody.is_default === true) {
+    const { data: current } = await supabase
+      .from("allocations").select("node_id").eq("id", id).single();
+    if (current?.node_id) {
+      await supabase
+        .from("allocations")
+        .update({ is_default: false })
+        .eq("node_id", current.node_id)
+        .neq("id", id);
+    }
+  }
+
   const { data, error } = await supabase
     .from("allocations")
-    .update(rawBody as Database["mcloud"]["Tables"]["allocations"]["Update"])
+    .update(rawBody)
     .eq("id", id)
     .select()
     .single();

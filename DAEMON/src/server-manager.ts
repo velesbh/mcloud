@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdir, writeFile, access } from "node:fs/promises";
+import { mkdir, writeFile, access, rm } from "node:fs/promises";
 import path from "node:path";
 import { config } from "./config.js";
 import { log } from "./logger.js";
@@ -32,6 +32,20 @@ async function ensureEula(dir: string) {
   try { await access(eula); } catch {
     await writeFile(eula, "eula=true\n", "utf8");
   }
+}
+
+/**
+ * Minecraft writes session.lock to the world directory when running.
+ * If a previous process crashed/was killed, the lock survives and blocks
+ * the next start. We delete all session.lock files before launching.
+ */
+async function clearSessionLocks(dir: string) {
+  const candidates = [
+    path.join(dir, "world", "session.lock"),
+    path.join(dir, "world_nether", "DIM-1", "session.lock"),
+    path.join(dir, "world_the_end", "DIM1", "session.lock"),
+  ];
+  await Promise.all(candidates.map((p) => rm(p, { force: true })));
 }
 
 async function setStatus(serverId: string, status: string) {
@@ -164,6 +178,7 @@ export async function startServer(serverId: string) {
 
   const dir = await ensureServerDir(serverId);
   await ensureEula(dir);
+  await clearSessionLocks(dir);
 
   // Install modpack on first start (if URL set and not yet installed)
   const srvWithModpack = srv as typeof srv & { modpack_url?: string | null; modpack_installed?: boolean };
