@@ -6,8 +6,9 @@ import { log } from "./logger.js";
 import { supabase } from "./supabase.js";
 import { broadcastConsole, broadcastServerStatus, persistConsoleLine } from "./console-bridge.js";
 import { ensureJar } from "./jar-manager.js";
-import { installJava, requiredJavaMajor, javaBinForMajor } from "./java-installer.js";
+import { requiredJavaMajor } from "./java-installer.js";
 import { installModpack } from "./modpack-installer.js";
+import { dockerAvailable, ensureImage, imageForJava, killContainer, removeContainer, containerName, spawnDockerJava, stopContainer, } from "./docker-runner.js";
 const procs = new Map();
 export function getRunning() {
     return procs;
@@ -71,88 +72,7 @@ async function setStatus(serverId, status) {
     // Push status immediately to subscribed clients — no polling delay
     void broadcastServerStatus(serverId, status);
 }
-/**
- * Spawns the process and wires up stdout/stderr/event handlers.
- * On ENOENT (Java missing), auto-installs the correct JRE and retries once.
- */
-async function spawnServer(serverId, cmd, args, cwd, gameVersion, isRetry = false) {
-    const proc = spawn(cmd, args, { cwd });
-    let markedRunning = false;
-    async function markRunning() {
-        if (markedRunning)
-            return;
-        markedRunning = true;
-        await setStatus(serverId, "running");
-        await broadcastConsole(serverId, "> Server is online", "system");
-    }
-    proc.stdout.on("data", (b) => {
-        const text = b.toString("utf8");
-        for (const line of text.split("\n")) {
-            const trimmed = line.replace(/\r$/, "");
-            if (!trimmed)
-                continue;
-            void broadcastConsole(serverId, trimmed, "server");
-            void persistConsoleLine(serverId, trimmed, "server");
-            // Paper/Vanilla/Fabric all log "Done (Xs)!" when the server is ready
-            if (!markedRunning && trimmed.includes("Done (") && trimmed.includes("For help")) {
-                void markRunning();
-            }
-        }
-    });
-    proc.stderr.on("data", (b) => {
-        const text = b.toString("utf8");
-        for (const line of text.split("\n")) {
-            const trimmed = line.replace(/\r$/, "");
-            if (!trimmed)
-                continue;
-            void broadcastConsole(serverId, trimmed, "server");
-            void persistConsoleLine(serverId, trimmed, "server");
-        }
-    });
-    proc.on("error", async (err) => {
-        procs.delete(serverId);
-        const nodeErr = err;
-        log.error("server process error", { serverId, err: err.message });
-        if (nodeErr.code === "ENOENT" && !isRetry) {
-            // Java not found — try to install it, then retry once
-            // Try to detect requested major from the cmd path (e.g. /usr/lib/jvm/java-25-.../bin/java)
-            const cmdMajorMatch = cmd.match(/java-(\d+)-/);
-            const major = cmdMajorMatch ? parseInt(cmdMajorMatch[1]) : requiredJavaMajor(gameVersion);
-            await broadcastConsole(serverId, `[daemon] Java ${major} not found — attempting auto-install...`, "system");
-            const ok = await installJava(gameVersion, serverId, major);
-            if (ok) {
-                // Re-resolve the binary after install
-                const newCmd = javaBinForMajor(major);
-                const retryCmd = newCmd !== "java" ? newCmd : cmd;
-                await broadcastConsole(serverId, `[daemon] Retrying with ${retryCmd}...`, "system");
-                await spawnServer(serverId, retryCmd, args, cwd, gameVersion, true);
-            }
-            else {
-                await broadcastConsole(serverId, `[error] Auto-install failed. Install manually: apt-get install -y openjdk-${major}-jre-headless`, "system");
-                await setStatus(serverId, "error");
-            }
-        }
-        else {
-            await broadcastConsole(serverId, `[error] ${err.message}`, "system");
-            await setStatus(serverId, "error");
-        }
-    });
-    proc.on("spawn", () => {
-        log.info("server spawned", { serverId, pid: proc.pid });
-        procs.set(serverId, { serverId, proc, startedAt: new Date() });
-    });
-    proc.on("exit", async (code, signal) => {
-        log.info("server exited", { serverId, code, signal });
-        procs.delete(serverId);
-        // Always reset to offline — if the JVM crashed before the 2s "running" timer
-        // this is the only place that clears the "starting" state.
-        // (ENOENT is handled by the "error" event above, so no double-set.)
-        await setStatus(serverId, "offline");
-        await broadcastConsole(serverId, `> Server stopped (code=${code ?? signal ?? "?"})`, "system");
-    });
-    // Register immediately so the kill handler can find the proc
-    procs.set(serverId, { serverId, proc, startedAt: new Date() });
-}
+// (legacy spawnServer removed — replaced by spawnDockerised / spawnDirect)
 export async function startServer(serverId) {
     if (procs.has(serverId)) {
         log.warn("startServer: already running", { serverId });
@@ -162,7 +82,7 @@ export async function startServer(serverId) {
     // Use the column-name hint (!allocation_id) which references the FK on the servers side.
     const { data: srv, error } = await supabase
         .from("servers")
-        .select("id, name, edition, game_version, loader, ram_mb, max_players, motd, allocation_id, modpack_url, modpack_installed, env_vars, allocations!allocation_id(local_ip, port)")
+        .select("id, name, edition, game_version, loader, ram_mb, cpu_percent, max_players, motd, allocation_id, modpack_url, modpack_installed, env_vars, allocations!allocation_id(local_ip, port)")
         .eq("id", serverId)
         .single();
     if (error || !srv) {
@@ -204,76 +124,155 @@ export async function startServer(serverId) {
     ].join("\n");
     await writeFile(path.join(dir, "server.properties"), props, "utf8");
     log.info("server.properties written", { serverId, bindIp, bindPort });
-    let cmd;
-    let args;
     if (srv.edition === "bedrock") {
         if (!config.bedrockBin) {
             await broadcastConsole(serverId, "[error] BEDROCK_BIN not configured on daemon", "system");
             await setStatus(serverId, "error");
             return;
         }
-        cmd = config.bedrockBin;
-        args = [];
+        // Bedrock still runs directly (binary not available as an official image)
+        await spawnDirect(serverId, config.bedrockBin, [], dir, srv.game_version);
+        return;
+    }
+    // ── Java path: containerised ────────────────────────────────────────
+    const envVars = srv.env_vars ?? {};
+    const customJar = typeof envVars.startup_jar === "string" && envVars.startup_jar.trim()
+        ? envVars.startup_jar.trim()
+        : null;
+    // Resolve the jar (relative to the container's /data, which is the server dir)
+    let jarRel;
+    if (customJar) {
+        jarRel = customJar;
+        await broadcastConsole(serverId, `> Using custom jar: ${customJar}`, "system");
     }
     else {
-        // Resolve JAR: use custom jar from env_vars if set, otherwise auto-download
-        const envVars = srv.env_vars ?? {};
-        const customJar = typeof envVars.startup_jar === "string" && envVars.startup_jar.trim()
-            ? envVars.startup_jar.trim()
-            : null;
-        let jar;
-        if (customJar) {
-            jar = path.join(dir, customJar);
-            await broadcastConsole(serverId, `> Using custom jar: ${customJar}`, "system");
-        }
-        else {
+        try {
+            await broadcastConsole(serverId, `> Fetching ${srv.loader} ${srv.game_version} jar...`, "system");
+            const jarAbs = await ensureJar(srv.loader, srv.game_version);
+            // Copy/link the jar into the server dir so it's reachable inside the container
+            const dest = path.join(dir, "server.jar");
             try {
-                await broadcastConsole(serverId, `> Fetching ${srv.loader} ${srv.game_version} jar...`, "system");
-                jar = await ensureJar(srv.loader, srv.game_version);
+                await rm(dest, { force: true });
             }
-            catch (err) {
-                const msg = `[error] Failed to download server jar: ${String(err)}`;
-                log.error("jar download failed", { serverId, err });
-                await broadcastConsole(serverId, msg, "system");
-                await setStatus(serverId, "error");
-                return;
-            }
+            catch { /* ignore */ }
+            await import("node:fs/promises").then((fs) => fs.copyFile(jarAbs, dest));
+            jarRel = "server.jar";
         }
-        // Pick Java binary: honour java_version from env_vars, else derive from game version
-        const requestedJavaMajor = typeof envVars.java_version === "string" && envVars.java_version.trim()
-            ? parseInt(envVars.java_version.trim(), 10)
-            : null;
-        const javaMajor = requestedJavaMajor && !isNaN(requestedJavaMajor)
-            ? requestedJavaMajor
-            : requiredJavaMajor(srv.game_version);
-        // Check if the right Java is installed; auto-install if not
-        let resolvedJava = javaBinForMajor(javaMajor);
-        if (resolvedJava === "java") {
-            await broadcastConsole(serverId, `> Java ${javaMajor} not found — installing...`, "system");
-            const ok = await installJava(srv.game_version, serverId, javaMajor);
-            if (!ok) {
-                await broadcastConsole(serverId, `[error] Failed to install Java ${javaMajor}. Install manually: apt-get install -y openjdk-${javaMajor}-jdk`, "system");
-                await setStatus(serverId, "error");
-                return;
-            }
-            resolvedJava = javaBinForMajor(javaMajor);
-            if (resolvedJava === "java")
-                resolvedJava = config.javaBin || "java";
+        catch (err) {
+            log.error("jar download failed", { serverId, err });
+            await broadcastConsole(serverId, `[error] Failed to download server jar: ${String(err)}`, "system");
+            await setStatus(serverId, "error");
+            return;
         }
-        await broadcastConsole(serverId, `> Using Java ${javaMajor}: ${resolvedJava}`, "system");
-        cmd = resolvedJava;
-        const xmx = `-Xmx${srv.ram_mb}M`;
-        const xms = `-Xms${Math.floor(srv.ram_mb / 2)}M`;
-        args = [xmx, xms, "-jar", jar, "nogui"];
     }
-    // Spawn with optional auto-install retry on ENOENT (Java missing)
-    await spawnServer(serverId, cmd, args, dir, srv.game_version);
+    // Choose Java major: env_vars.java_version overrides game-version default
+    const requestedJavaMajor = typeof envVars.java_version === "string" && envVars.java_version.trim()
+        ? parseInt(envVars.java_version.trim(), 10)
+        : null;
+    const javaMajor = requestedJavaMajor && !isNaN(requestedJavaMajor)
+        ? requestedJavaMajor
+        : requiredJavaMajor(srv.game_version);
+    if (!dockerAvailable()) {
+        await broadcastConsole(serverId, "[error] Docker is not installed on this node. Install it with: apt-get install -y docker.io", "system");
+        await setStatus(serverId, "error");
+        return;
+    }
+    const image = imageForJava(javaMajor);
+    const ok = await ensureImage(image, (line) => {
+        void broadcastConsole(serverId, `[docker] ${line}`, "system");
+    });
+    if (!ok) {
+        await broadcastConsole(serverId, `[error] Failed to pull image ${image}.`, "system");
+        await setStatus(serverId, "error");
+        return;
+    }
+    await broadcastConsole(serverId, `> Starting in container: ${image} (Java ${javaMajor})`, "system");
+    const xmx = `-Xmx${srv.ram_mb}M`;
+    const xms = `-Xms${Math.floor(srv.ram_mb / 2)}M`;
+    const javaArgs = [xmx, xms, "-jar", jarRel, "nogui"];
+    await spawnDockerised(serverId, dir, image, srv.ram_mb, srv.cpu_percent ?? 100, javaArgs, srv.game_version);
+}
+/**
+ * Wire up stdout/stderr/event handlers around a `docker run` child process.
+ */
+async function spawnDockerised(serverId, dir, image, ramMb, cpuPercent, javaArgs, gameVersion) {
+    const proc = spawnDockerJava({
+        serverId,
+        hostDir: dir,
+        image,
+        ramMb,
+        cpuPercent,
+        javaArgs,
+    });
+    attachProcHandlers(serverId, proc, gameVersion, /* isDocker */ true);
+}
+/** Spawn a non-container process (Bedrock fallback). */
+async function spawnDirect(serverId, cmd, args, cwd, gameVersion) {
+    const proc = spawn(cmd, args, { cwd });
+    attachProcHandlers(serverId, proc, gameVersion, /* isDocker */ false);
+}
+/** Common stdout/stderr/exit wiring shared by docker and direct spawns. */
+function attachProcHandlers(serverId, proc, gameVersion, isDocker) {
+    void gameVersion; // kept for symmetry / future use
+    let markedRunning = false;
+    async function markRunning() {
+        if (markedRunning)
+            return;
+        markedRunning = true;
+        await setStatus(serverId, "running");
+        await broadcastConsole(serverId, "> Server is online", "system");
+    }
+    proc.stdout?.on("data", (b) => {
+        const text = b.toString("utf8");
+        for (const line of text.split("\n")) {
+            const trimmed = line.replace(/\r$/, "");
+            if (!trimmed)
+                continue;
+            void broadcastConsole(serverId, trimmed, "server");
+            void persistConsoleLine(serverId, trimmed, "server");
+            if (!markedRunning && trimmed.includes("Done (") && trimmed.includes("For help")) {
+                void markRunning();
+            }
+        }
+    });
+    proc.stderr?.on("data", (b) => {
+        const text = b.toString("utf8");
+        for (const line of text.split("\n")) {
+            const trimmed = line.replace(/\r$/, "");
+            if (!trimmed)
+                continue;
+            void broadcastConsole(serverId, trimmed, "server");
+            void persistConsoleLine(serverId, trimmed, "server");
+        }
+    });
+    proc.on("error", async (err) => {
+        procs.delete(serverId);
+        log.error("server process error", { serverId, err: err.message });
+        await broadcastConsole(serverId, `[error] ${err.message}`, "system");
+        await setStatus(serverId, "error");
+    });
+    proc.on("spawn", () => {
+        log.info("server spawned", { serverId, pid: proc.pid, isDocker });
+        procs.set(serverId, { serverId, proc, startedAt: new Date() });
+    });
+    proc.on("exit", async (code, signal) => {
+        log.info("server exited", { serverId, code, signal, isDocker });
+        procs.delete(serverId);
+        if (isDocker)
+            removeContainer(containerName(serverId));
+        await setStatus(serverId, "offline");
+        await broadcastConsole(serverId, `> Server stopped (code=${code ?? signal ?? "?"})`, "system");
+    });
+    // Register immediately so the kill handler can find the proc
+    procs.set(serverId, { serverId, proc, startedAt: new Date() });
 }
 export async function stopServer(serverId) {
     const running = procs.get(serverId);
     if (!running) {
         log.warn("stopServer: not running", { serverId });
         await setStatus(serverId, "offline");
+        // Belt-and-braces: if a container is somehow still around, remove it
+        removeContainer(containerName(serverId));
         return;
     }
     await setStatus(serverId, "stopping");
@@ -285,9 +284,21 @@ export async function stopServer(serverId) {
     setTimeout(() => {
         if (procs.has(serverId)) {
             log.warn("hard-killing server", { serverId });
+            stopContainer(serverId, 5);
             running.proc.kill("SIGKILL");
         }
     }, 30_000);
+}
+/** Force-kill — used by the admin "Kill" button. Stops container + process. */
+export async function killServerProc(serverId) {
+    const running = procs.get(serverId);
+    killContainer(serverId);
+    if (running) {
+        try {
+            running.proc.kill("SIGKILL");
+        }
+        catch { /* already dead */ }
+    }
 }
 export async function restartServer(serverId) {
     await stopServer(serverId);

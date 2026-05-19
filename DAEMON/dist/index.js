@@ -1,7 +1,7 @@
 import { config } from "./config.js";
 import { log } from "./logger.js";
 import { supabase } from "./supabase.js";
-import { startServer, stopServer, restartServer, sendConsoleCommand, shutdownAll, getRunning, } from "./server-manager.js";
+import { startServer, stopServer, restartServer, sendConsoleCommand, shutdownAll, getRunning, killServerProc, } from "./server-manager.js";
 import { subscribeFileManager } from "./file-manager.js";
 import { startHibernationCron } from "./hibernation.js";
 import { startMetricsBroadcaster } from "./metrics-broadcaster.js";
@@ -119,10 +119,7 @@ function subscribeCommands() {
         if (!id)
             return;
         log.info("cmd: kill (SIGKILL)", { serverId: id });
-        const running = getRunning().get(id);
-        if (running) {
-            running.proc.kill("SIGKILL");
-        }
+        await killServerProc(id);
         // Force DB state regardless of whether process existed
         await supabase.from("servers").update({ status: "offline" }).eq("id", id);
     });
