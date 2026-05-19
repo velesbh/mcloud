@@ -37,21 +37,22 @@ export async function GET(
   const ownerClerkId = r.server.clerk_user_id;
 
   // ── This server's allocations (the source of truth for quota) ──────────────
-  const { data: here = [] } = await admin
+  const { data: _here } = await admin
     .from("allocations")
     .select("id, ip, local_ip, port, server_id")
     .eq("server_id", id)
     .order("port", { ascending: true });
+  const here = _here ?? [];
 
   // ── Other allocations on this node (owned by same user) — display only ─────
-  const { data: userServers = [] as { id: string }[] } = await admin
+  const { data: _userServers } = await admin
     .from("servers")
     .select("id")
     .eq("clerk_user_id", ownerClerkId)
     .eq("node_id", r.server.node_id!)
     .neq("id", id);
 
-  const otherIds = userServers.map((s) => s.id);
+  const otherIds = (_userServers ?? []).map((s) => s.id);
   const { data: elsewhere = [] } = otherIds.length > 0
     ? await admin
         .from("allocations")
