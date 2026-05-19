@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { isAdmin } from "@/lib/clerk/auth";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 
 // ─── GET: list collaborators ──────────────────────────────────────────────────
@@ -21,7 +22,8 @@ export async function GET(
     .single();
 
   if (!server) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (server.clerk_user_id !== userId) {
+  const adminCaller = await isAdmin();
+  if (!adminCaller && server.clerk_user_id !== userId) {
     const { data: c } = await admin
       .from("server_collaborators")
       .select("id").eq("server_id", id).eq("clerk_user_id", userId).maybeSingle();
@@ -60,7 +62,8 @@ export async function POST(
     .single();
 
   if (!server) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (server.clerk_user_id !== userId) {
+  const adminCaller2 = await isAdmin();
+  if (!adminCaller2 && server.clerk_user_id !== userId) {
     return NextResponse.json({ error: "Only the server owner can add collaborators" }, { status: 403 });
   }
 
