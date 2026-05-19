@@ -22,8 +22,9 @@ export default function PortsPage({ params }: { params: Promise<{ id: string }> 
     queryKey: ["ports", id],
     queryFn: async () => {
       const res = await fetch(`/api/servers/${id}/ports`);
-      if (!res.ok) return null;
-      return res.json();
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Failed to load ports");
+      return json as PortData;
     },
     refetchInterval: 5_000,
     staleTime: 0,
