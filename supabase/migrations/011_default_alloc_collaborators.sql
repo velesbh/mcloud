@@ -20,13 +20,13 @@ CREATE POLICY "collaborators_owner_all" ON mcloud.server_collaborators
     EXISTS (
       SELECT 1 FROM mcloud.servers s
       WHERE s.id = server_id
-        AND s.clerk_user_id = auth.clerk_user_id()
+        AND s.clerk_user_id = mcloud.clerk_uid()
     )
   );
 
 -- Collaborators can see the row so they know they have access
 CREATE POLICY "collaborators_self_select" ON mcloud.server_collaborators
-  FOR SELECT USING (clerk_user_id = auth.clerk_user_id());
+  FOR SELECT USING (clerk_user_id = mcloud.clerk_uid());
 
 -- Expose in realtime publication
 ALTER PUBLICATION supabase_realtime ADD TABLE mcloud.server_collaborators;
