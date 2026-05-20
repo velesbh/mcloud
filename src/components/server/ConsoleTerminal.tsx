@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useSupabaseClient } from "@/lib/supabase/client";
-import { Maximize2, Minimize2, Trash2, ChevronRight } from "lucide-react";
+import { Maximize2, Minimize2, Trash2, ChevronRight, ArrowDown } from "lucide-react";
 import { PixelButton } from "@/components/pixel/PixelPanel";
 import { LoadingSpinner } from "@/components/shared/MinecraftLoader";
 import { cn } from "@/lib/utils";
@@ -31,6 +31,12 @@ export function ConsoleTerminal({ serverId }: ConsoleTerminalProps) {
   const [fullscreen, setFullscreen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const supabase = useSupabaseClient();
+
+  // Smart auto-scroll: true while the user is pinned to the bottom.
+  // Set to false the moment they scroll up; set back to true when they
+  // manually scroll back down (or click the jump button).
+  const autoScrollRef = useRef(true);
+  const [atBottom, setAtBottom] = useState(true);
 
   // Command history — persisted to localStorage
   const historyKey = `mcloud-console-history-${serverId}`;
@@ -98,15 +104,15 @@ export function ConsoleTerminal({ serverId }: ConsoleTerminalProps) {
       observer = new ResizeObserver(() => { try { fitAddon.fit(); } catch {} });
       if (containerRef.current) observer.observe(containerRef.current);
 
-      // Load existing logs
-      try {
-        const res = await fetch(`/api/servers/${serverId}/console`);
-        const events = await res.json();
-        for (const event of events) {
-          colorLine(event.line, event.source);
-        }
-        term.scrollToBottom();
-      } catch {}
+      // Track whether the user is scrolled to the bottom.
+      // xterm fires onScroll with the new viewportY (lines from top).
+      // We're "at bottom" when viewportY + visible rows >= total buffer lines.
+      term.onScroll(() => {
+        const buf = term.buffer.active;
+        const isAtBottom = buf.viewportY + term.rows >= buf.length;
+        autoScrollRef.current = isAtBottom;
+        setAtBottom(isAtBottom);
+      });
 
       function colorLine(line: string, source: string) {
         let color = "\x1b[0m";
@@ -115,8 +121,24 @@ export function ConsoleTerminal({ serverId }: ConsoleTerminalProps) {
         else if (line.includes("ERROR") || line.includes("Exception")) color = "\x1b[31m";
         else if (line.includes("WARN")) color = "\x1b[33m";
         term.writeln(`${color}${line}\x1b[0m`);
-        term.scrollToBottom();
+        // Only scroll when the user is already pinned to the bottom — if they've
+        // scrolled up to read history we leave the viewport exactly where it is.
+        if (autoScrollRef.current) {
+          term.scrollToBottom();
+        }
       }
+
+      // Load existing logs then snap to bottom (initial load always scrolls down)
+      try {
+        const res = await fetch(`/api/servers/${serverId}/console`);
+        const events = await res.json();
+        for (const event of events) {
+          colorLine(event.line, event.source);
+        }
+        term.scrollToBottom();
+        autoScrollRef.current = true;
+        setAtBottom(true);
+      } catch {}
 
       // Broadcast (fast)
       const broadcastChannel = supabase
@@ -194,6 +216,12 @@ export function ConsoleTerminal({ serverId }: ConsoleTerminalProps) {
     }
   }
 
+  function jumpToBottom() {
+    termRef.current?.scrollToBottom();
+    autoScrollRef.current = true;
+    setAtBottom(true);
+  }
+
   async function sendCommand(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim()) return;
@@ -201,6 +229,9 @@ export function ConsoleTerminal({ serverId }: ConsoleTerminalProps) {
     setInput(""); setSuggestions([]);
     pushHistory(cmd);
     if (termRef.current) {
+      // Sending a command always snaps back to the bottom
+      autoScrollRef.current = true;
+      setAtBottom(true);
       termRef.current.writeln(`\x1b[32m> ${cmd}\x1b[0m`);
       termRef.current.scrollToBottom();
     }
@@ -212,7 +243,11 @@ export function ConsoleTerminal({ serverId }: ConsoleTerminalProps) {
     inputRef.current?.focus();
   }
 
-  function clearTerm() { termRef.current?.clear(); }
+  function clearTerm() {
+    termRef.current?.clear();
+    autoScrollRef.current = true;
+    setAtBottom(true);
+  }
 
   return (
     <div
@@ -249,8 +284,29 @@ export function ConsoleTerminal({ serverId }: ConsoleTerminalProps) {
         </PixelButton>
       </div>
 
-      {/* Terminal */}
-      <div ref={containerRef} className="flex-1 min-h-0 p-2 overflow-hidden" />
+      {/* Terminal + floating jump-to-bottom button */}
+      <div className="relative flex-1 min-h-0">
+        <div ref={containerRef} className="absolute inset-0 p-2 overflow-hidden" />
+
+        {/* Appears only when the user has scrolled up — click to snap back */}
+        {!atBottom && (
+          <button
+            type="button"
+            onClick={jumpToBottom}
+            className="absolute bottom-3 right-4 z-10 flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-minecraft uppercase transition-opacity"
+            style={{
+              background: "rgba(10,10,10,0.92)",
+              border: "2px solid #5a9a2e",
+              borderRadius: 0,
+              color: "#5a9a2e",
+              boxShadow: "0 0 8px rgba(90,154,46,0.35), 2px 2px 0 rgba(0,0,0,0.5)",
+            }}
+          >
+            <ArrowDown className="w-3 h-3" />
+            Jump to bottom
+          </button>
+        )}
+      </div>
 
       {/* Suggestion bar */}
       {suggestions.length > 0 && (
