@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdir, writeFile, access, rm } from "node:fs/promises";
+import { mkdir, writeFile, readFile, access, rm } from "node:fs/promises";
 import path from "node:path";
 import { config } from "./config.js";
 import { log } from "./logger.js";
@@ -29,6 +29,78 @@ const procs = new Map<string, Running>();
 
 export function getRunning() {
   return procs;
+}
+
+/**
+ * Read-parse-merge-write `server.properties`.
+ *
+ * `forced`   — written unconditionally on every start (bind IP/port, rcon).
+ * `defaults` — written only when a key is absent (first-start init).
+ *
+ * All other keys already in the file are left exactly as-is, so user edits
+ * made via the file manager or the properties tab survive daemon restarts.
+ */
+async function mergeServerProperties(
+  filePath: string,
+  {
+    forced,
+    defaults,
+  }: { forced: Record<string, string>; defaults: Record<string, string> },
+): Promise<void> {
+  // Parse existing file into an ordered list so we can rewrite it preserving
+  // comments and blank lines (Minecraft server writes comments in the file).
+  type Line =
+    | { kind: "kv"; key: string; value: string; raw: string }
+    | { kind: "other"; raw: string };
+
+  const lines: Line[] = [];
+  const existing = new Map<string, number>(); // key → index in lines[]
+
+  let raw = "";
+  try {
+    raw = await readFile(filePath, "utf8");
+  } catch {
+    // File doesn't exist yet — start empty, all defaults will be appended.
+  }
+
+  for (const rawLine of raw.split(/\r?\n/)) {
+    const trimmed = rawLine.trim();
+    // Skip comments and blank lines for key tracking but keep them in output
+    if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("!")) {
+      lines.push({ kind: "other", raw: rawLine });
+      continue;
+    }
+    const eqIdx = trimmed.indexOf("=");
+    if (eqIdx === -1) {
+      lines.push({ kind: "other", raw: rawLine });
+      continue;
+    }
+    const key = trimmed.slice(0, eqIdx).trim();
+    const value = trimmed.slice(eqIdx + 1); // preserve original value formatting
+    const idx = lines.push({ kind: "kv", key, value, raw: rawLine }) - 1;
+    existing.set(key, idx);
+  }
+
+  // Apply forced overrides — update in place if the key exists, else append.
+  for (const [key, value] of Object.entries(forced)) {
+    const idx = existing.get(key);
+    if (idx !== undefined) {
+      lines[idx] = { kind: "kv", key, value, raw: `${key}=${value}` };
+    } else {
+      const newIdx = lines.push({ kind: "kv", key, value, raw: `${key}=${value}` }) - 1;
+      existing.set(key, newIdx);
+    }
+  }
+
+  // Apply defaults — only for keys not already present.
+  for (const [key, value] of Object.entries(defaults)) {
+    if (!existing.has(key)) {
+      lines.push({ kind: "kv", key, value, raw: `${key}=${value}` });
+    }
+  }
+
+  const output = lines.map((l) => l.raw).join("\n").trimEnd() + "\n";
+  await writeFile(filePath, output, "utf8");
 }
 
 async function ensureServerDir(serverId: string): Promise<string> {
@@ -137,17 +209,31 @@ export async function startServer(serverId: string) {
   const bindIp   = alloc?.local_ip ?? "0.0.0.0";
   const bindPort = alloc?.port ?? 25565;
 
-  // Write server.properties
-  const props = [
-    `motd=${srv.motd ?? srv.name}`,
-    `max-players=${srv.max_players ?? 20}`,
-    `server-ip=${bindIp}`,
-    `server-port=${bindPort}`,
-    `online-mode=true`,
-    `enable-rcon=false`,
-  ].join("\n");
-  await writeFile(path.join(dir, "server.properties"), props, "utf8");
-  log.info("server.properties written", { serverId, bindIp, bindPort });
+  // Merge server.properties — preserve every key the user has set and only
+  // force the values the daemon *must* control (bind IP/port, rcon=false).
+  // On a fresh server the file won't exist yet; we write sensible defaults
+  // for all optional keys so the server boots correctly out of the box.
+  await mergeServerProperties(path.join(dir, "server.properties"), {
+    // Daemon-controlled — always overwritten so the server binds to the
+    // address/port we allocated.
+    forced: {
+      "server-ip": bindIp,
+      "server-port": String(bindPort),
+      "enable-rcon": "false",
+    },
+    // Defaults written only when the file doesn't exist yet (first start).
+    // Once a user edits the file, these never touch their settings again.
+    defaults: {
+      "motd": srv.motd ?? srv.name,
+      "max-players": String(srv.max_players ?? 20),
+      "online-mode": "true",
+      "gamemode": "survival",
+      "difficulty": "easy",
+      "level-name": "world",
+      "view-distance": "10",
+    },
+  });
+  log.info("server.properties merged", { serverId, bindIp, bindPort });
 
   if (srv.edition === "bedrock") {
     if (!config.bedrockBin) {
