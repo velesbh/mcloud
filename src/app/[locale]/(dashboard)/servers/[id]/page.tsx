@@ -40,6 +40,7 @@ export default function ServerOverviewPage({
   const [liveStatus, setLiveStatus] = useState<string | null>(null);
   const [liveRamMb, setLiveRamMb] = useState<number | null>(null);
   const [liveCpuPct, setLiveCpuPct] = useState<number | null>(null);
+  const [liveDiskMb, setLiveDiskMb] = useState<number | null>(null);
   const [installing, setInstalling] = useState(false);
 
   const { data: server, isLoading } = useQuery({
@@ -66,6 +67,7 @@ export default function ServerOverviewPage({
       .on("broadcast", { event: "metrics" }, (msg) => {
         setLiveRamMb(msg.payload?.ramMb ?? null);
         setLiveCpuPct(msg.payload?.cpuPercent ?? null);
+        setLiveDiskMb(msg.payload?.diskUsedMb ?? null);
       })
       .on("broadcast", { event: "line" }, (msg) => {
         // Detect modpack installer activity from console output
@@ -85,6 +87,7 @@ export default function ServerOverviewPage({
     if (status !== "running") {
       setLiveRamMb(null);
       setLiveCpuPct(null);
+      setLiveDiskMb(null);
     }
   }, [liveStatus, server?.status]);
 
@@ -333,11 +336,11 @@ export default function ServerOverviewPage({
         <ResourceBar
           label="Disk"
           icon={<GamepadIcon size={12} />}
-          used={0}
+          used={isRunning ? (liveDiskMb ?? 0) : 0}
           total={server.disk_mb}
           format={(v) => `${(v / 1024).toFixed(1)} GB`}
-          live={false}
-          showAllocated
+          live={isRunning && liveDiskMb != null && liveDiskMb > 0}
+          showAllocated={!isRunning || liveDiskMb == null}
         />
       </PixelPanel>
     </motion.div>

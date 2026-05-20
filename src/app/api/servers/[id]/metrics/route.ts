@@ -50,7 +50,7 @@ export async function GET(
   // Inner query fetches newest 60, outer re-sorts ascending.
   const { data, error } = await supabase
     .from("server_metrics")
-    .select("id, server_id, sampled_at, ram_used_mb, cpu_percent, player_count")
+    .select("id, server_id, sampled_at, ram_used_mb, cpu_percent, player_count, disk_used_mb")
     .eq("server_id", id)
     .order("sampled_at", { ascending: false })
     .limit(60);
@@ -75,12 +75,12 @@ export async function POST(
   const server = await getServerAndCheckOwnership(supabase, userId, id);
   if (!server) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const body = await req.json() as { ram_used_mb?: number; cpu_percent?: number; player_count?: number };
-  const { ram_used_mb = 0, cpu_percent = 0, player_count = 0 } = body;
+  const body = await req.json() as { ram_used_mb?: number; cpu_percent?: number; player_count?: number; disk_used_mb?: number };
+  const { ram_used_mb = 0, cpu_percent = 0, player_count = 0, disk_used_mb = 0 } = body;
 
   const { data, error } = await supabase
     .from("server_metrics")
-    .insert({ server_id: id, ram_used_mb, cpu_percent, player_count })
+    .insert({ server_id: id, ram_used_mb, cpu_percent, player_count, disk_used_mb })
     .select()
     .single();
 

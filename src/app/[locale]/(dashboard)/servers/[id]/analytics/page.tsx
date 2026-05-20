@@ -7,6 +7,7 @@ import {
   Users,
   Cpu,
   MemoryStick,
+  HardDrive,
   Network,
   Clock,
   AlertTriangle,
@@ -37,11 +38,13 @@ type MetricRow = {
   ram_used_mb: number;
   cpu_percent: number;
   player_count: number;
+  disk_used_mb: number;
 };
 
 type LiveMetrics = {
   ram_used_mb: number;
   cpu_percent: number;
+  disk_used_mb: number;
 };
 
 type PingData = {
@@ -92,8 +95,12 @@ export default function ServerAnalyticsPage({
     const channel = supabase
       .channel(`console:${id}`, { config: { broadcast: { self: false } } })
       .on("broadcast", { event: "metrics" }, (msg) => {
-        const payload = msg.payload as { ram_used_mb: number; cpu_percent: number };
-        setLiveMetrics({ ram_used_mb: payload.ram_used_mb, cpu_percent: payload.cpu_percent });
+        const payload = msg.payload as { ramMb: number; cpuPercent: number; diskUsedMb: number };
+        setLiveMetrics({
+          ram_used_mb: payload.ramMb,
+          cpu_percent: payload.cpuPercent,
+          disk_used_mb: payload.diskUsedMb ?? 0,
+        });
       })
       .subscribe();
 
@@ -116,12 +123,17 @@ export default function ServerAnalyticsPage({
     () => hasHistory ? historicalMetrics.map((r) => r.player_count) : Array(60).fill(0),
     [historicalMetrics, hasHistory]
   );
+  const diskSeries = useMemo(
+    () => hasHistory ? historicalMetrics.map((r) => r.disk_used_mb ?? 0) : Array(60).fill(0),
+    [historicalMetrics, hasHistory]
+  );
 
   // Live current values — prefer realtime broadcast, else last historical row
   const lastHistorical = historicalMetrics[historicalMetrics.length - 1];
   const currentRam = liveMetrics?.ram_used_mb ?? lastHistorical?.ram_used_mb ?? 0;
   const currentCpu = liveMetrics?.cpu_percent ?? lastHistorical?.cpu_percent ?? 0;
   const currentPlayers = pingData?.players_online ?? lastHistorical?.player_count ?? 0;
+  const currentDisk = liveMetrics?.disk_used_mb ?? lastHistorical?.disk_used_mb ?? 0;
 
   const uptime = useMemo(() => {
     if (!server?.last_started_at || !isRunning) return null;
@@ -163,6 +175,16 @@ export default function ServerAnalyticsPage({
       bg: "bg-primary/10",
       series: playerSeries,
       max_y: server.max_players,
+    },
+    {
+      label: "Disk",
+      value: formatMb(currentDisk),
+      max: formatMb(server.disk_mb),
+      icon: HardDrive,
+      color: "text-amber-500",
+      bg: "bg-amber-500/10",
+      series: diskSeries,
+      max_y: server.disk_mb,
     },
     {
       label: "Network",
@@ -207,7 +229,7 @@ export default function ServerAnalyticsPage({
         </div>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {cards.map((c, i) => (
           <motion.div
             key={c.label}
@@ -232,7 +254,7 @@ export default function ServerAnalyticsPage({
         ))}
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
         <Card className="p-5 space-y-4">
           <div className="flex items-center justify-between">
             <div>
@@ -263,6 +285,22 @@ export default function ServerAnalyticsPage({
             <span className="text-xs text-muted-foreground">Last 60m</span>
           </div>
           <Sparkline values={cpuSeries} max={server.cpu_percent} height={120} color="hsl(38 92% 50%)" />
+        </Card>
+
+        <Card className="p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-sm flex items-center gap-2">
+                <HardDrive className="w-4 h-4 text-amber-500" />
+                Disk usage
+              </h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Limit: {formatMb(server.disk_mb)}
+              </p>
+            </div>
+            <span className="text-xs text-muted-foreground">Last 60m</span>
+          </div>
+          <Sparkline values={diskSeries} max={server.disk_mb} height={120} color="hsl(45 93% 47%)" />
         </Card>
       </div>
 

@@ -530,12 +530,14 @@ export interface Database {
           ram_used_mb: number;
           cpu_percent: number;
           player_count: number;
+          disk_used_mb: number;
         };
         Insert: {
           server_id: string;
           ram_used_mb?: number;
           cpu_percent?: number;
           player_count?: number;
+          disk_used_mb?: number;
           sampled_at?: string;
         };
         Update: {
@@ -543,6 +545,7 @@ export interface Database {
           ram_used_mb?: number;
           cpu_percent?: number;
           player_count?: number;
+          disk_used_mb?: number;
           sampled_at?: string;
         };
         Relationships: [];

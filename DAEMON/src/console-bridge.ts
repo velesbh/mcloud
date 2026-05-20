@@ -55,19 +55,20 @@ export async function broadcastServerStatus(serverId: string, status: string) {
 
 /**
  * Broadcast real-time resource metrics so the overview page can show
- * actual RAM/CPU usage without polling the DB.
+ * actual RAM/CPU/disk usage without polling the DB.
  */
 export async function broadcastMetrics(
   serverId: string,
   ramMb: number,
-  cpuPercent: number
+  cpuPercent: number,
+  diskUsedMb: number,
 ) {
   try {
     const ch = getChannel(serverId);
     await ch.send({
       type: "broadcast",
       event: "metrics",
-      payload: { ramMb, cpuPercent, ts: Date.now() },
+      payload: { ramMb, cpuPercent, diskUsedMb, ts: Date.now() },
     });
   } catch (e) {
     log.warn("broadcastMetrics failed", { serverId, err: String(e) });
