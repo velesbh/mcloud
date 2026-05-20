@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Package } from "lucide-react";
+import { Package, AlertTriangle, CheckCircle, Loader2, ServerOff, Lock } from "lucide-react";
 import { ModpackBrowser, type PickedModpack } from "@/components/server/ModpackBrowser";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -134,6 +134,77 @@ export function CreateServerWizard() {
     queryFn: () => fetch("/api/regions").then((r) => r.json()),
   });
 
+  // Watch resource values for stock pre-flight
+  const watchedRam = form.watch("ram_mb");
+  const watchedDisk = form.watch("disk_mb");
+  const watchedRegion = form.watch("region_id");
+
+  type RegionStock = {
+    available: boolean;
+    reason: "noCapacity" | "noAllocations" | null;
+    max_free_ram_mb: number;
+    max_free_disk_mb: number;
+    online_nodes: number;
+  };
+  type RegionStockResult = {
+    any: boolean;
+    regions: Record<string, RegionStock>;
+  };
+  type StockResult = {
+    available: boolean;
+    reason: "noCapacity" | "noAllocations" | null;
+    fitting_nodes: number;
+    online_nodes: number;
+    max_free_ram_mb: number;
+    max_free_disk_mb: number;
+  };
+
+  // Per-region availability — fetched whenever RAM/disk changes on step 2.
+  // Powers the greyed-out region cards so users see capacity before picking.
+  const { data: regionStock, isFetching: regionStockFetching } = useQuery<RegionStockResult | null>({
+    queryKey: ["stock-regions", watchedRam, watchedDisk],
+    queryFn: async () => {
+      const params = new URLSearchParams({ ram_mb: String(watchedRam), disk_mb: String(watchedDisk) });
+      const res = await fetch(`/api/stock/regions?${params}`);
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: step === 2 && !!watchedRam && !!watchedDisk,
+    staleTime: 15_000,
+    retry: 1,
+  });
+
+  // If the currently-selected region becomes unavailable, clear it so the
+  // user is nudged to pick an available one.
+  useEffect(() => {
+    if (!regionStock || !watchedRegion) return;
+    const rs = regionStock.regions[watchedRegion];
+    if (rs && !rs.available) {
+      form.setValue("region_id", undefined as unknown as string);
+    }
+  }, [regionStock, watchedRegion]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Overall stock check (scoped to the selected region if one is chosen)
+  const { data: stock, isFetching: stockFetching, isError: stockError } = useQuery<StockResult | null>({
+    queryKey: ["stock", watchedRam, watchedDisk, watchedRegion],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        ram_mb: String(watchedRam),
+        disk_mb: String(watchedDisk),
+      });
+      if (watchedRegion) params.set("region_id", watchedRegion);
+      const res = await fetch(`/api/stock?${params}`);
+      if (!res.ok) throw new Error("stock check failed");
+      return res.json();
+    },
+    enabled: step === 2 && !!watchedRam && !!watchedDisk,
+    staleTime: 15_000,
+    retry: 1,
+  });
+
+  // Derived: is creation blocked right now?
+  const stockUnavailable = !stockFetching && !stockError && !!stock && !stock.available;
+
   const watchedLoader = form.watch("loader");
   const { data: javaVersions = [], isLoading: versionsLoading } = useMcVersions(
     edition === "java" ? watchedLoader : "vanilla"
@@ -164,9 +235,19 @@ export function CreateServerWizard() {
       const result = await res.json();
       if (!res.ok) {
         if (result.error === "serverLimit") {
-          toast.error("You've reached your server limit on the free tier.");
+          toast.error("You've reached your server limit. Upgrade your plan for more servers.");
+        } else if (result.error === "outOfStock") {
+          toast.error("No nodes have enough capacity right now. Try a smaller server or a different region.");
+        } else if (result.error === "noAllocations") {
+          toast.error("No free IP:port slots are available. Ask an admin to add allocations.");
+        } else if (result.error === "premiumReserved") {
+          toast.error("Remaining capacity is reserved for premium users. Upgrade or reduce resources.");
+        } else if (result.error === "ramExceedsPlan") {
+          toast.error(`Your plan allows up to ${result.quotas?.max_ram_mb ?? "?"} MB RAM.`);
+        } else if (result.error === "diskExceedsPlan") {
+          toast.error(`Your plan allows up to ${result.quotas?.max_disk_mb ?? "?"} MB disk.`);
         } else {
-          toast.error("Failed to create server");
+          toast.error(typeof result.error === "string" ? result.error : "Failed to create server");
         }
         return;
       }
@@ -455,30 +536,85 @@ export function CreateServerWizard() {
 
               {regions.length > 0 && (
                 <div className="space-y-2">
-                  <Label>Region</Label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {regions.map((region) => (
-                      <Card
-                        key={region.id}
-                        className={cn(
-                          "p-3 cursor-pointer transition-all border-2",
-                          form.watch("region_id") === region.id
-                            ? "border-primary bg-primary/5"
-                            : "border-border hover:border-primary/40"
-                        )}
-                        onClick={() => form.setValue("region_id", region.id)}
-                      >
-                        <div className="flex items-center gap-2">
-                          {region.flag_emoji ? (
-                            <span className="text-base">{region.flag_emoji}</span>
-                          ) : (
-                            <CompassIcon size={16} />
-                          )}
-                          <div className="font-minecraft text-[9px]">{region.name}</div>
-                        </div>
-                      </Card>
-                    ))}
+                  <div className="flex items-center justify-between">
+                    <Label>Region</Label>
+                    {regionStockFetching && (
+                      <span className="flex items-center gap-1 text-[10px] text-muted-foreground font-minecraft">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Checking capacity…
+                      </span>
+                    )}
                   </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {regions.map((region) => {
+                      const rs = regionStock?.regions[region.id];
+                      // While loading treat all as available (don't flicker)
+                      const isUnavailable = !!regionStock && rs !== undefined && !rs.available;
+                      const isSelected = form.watch("region_id") === region.id;
+
+                      const unavailableLabel = rs?.reason === "noAllocations"
+                        ? "No slots"
+                        : rs?.reason === "noCapacity"
+                          ? "Full"
+                          : null;
+
+                      return (
+                        <Card
+                          key={region.id}
+                          className={cn(
+                            "p-3 transition-all border-2 relative",
+                            isUnavailable
+                              ? "cursor-not-allowed opacity-50 border-border bg-muted/30 select-none"
+                              : cn(
+                                  "cursor-pointer",
+                                  isSelected
+                                    ? "border-primary bg-primary/5"
+                                    : "border-border hover:border-primary/40"
+                                )
+                          )}
+                          onClick={() => {
+                            if (!isUnavailable) form.setValue("region_id", region.id);
+                          }}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              {region.flag_emoji ? (
+                                <span className="text-base">{region.flag_emoji}</span>
+                              ) : (
+                                <CompassIcon size={16} />
+                              )}
+                              <div className="font-minecraft text-[9px] truncate">{region.name}</div>
+                            </div>
+                            {isUnavailable && unavailableLabel ? (
+                              <span className="flex items-center gap-0.5 text-[8px] font-minecraft uppercase text-muted-foreground bg-muted px-1.5 py-0.5 shrink-0">
+                                <Lock className="w-2.5 h-2.5" />
+                                {unavailableLabel}
+                              </span>
+                            ) : isSelected ? (
+                              <CheckCircle className="w-3.5 h-3.5 text-primary shrink-0" />
+                            ) : null}
+                          </div>
+                          {/* Capacity hint under unavailable cards */}
+                          {isUnavailable && rs?.max_free_ram_mb !== undefined && rs.max_free_ram_mb > 0 && rs.max_free_ram_mb < watchedRam && (
+                            <p className="mt-1.5 text-[8px] font-minecraft text-muted-foreground leading-tight">
+                              Max free: {rs.max_free_ram_mb >= 1024
+                                ? `${(rs.max_free_ram_mb / 1024).toFixed(1)} GB RAM`
+                                : `${rs.max_free_ram_mb} MB RAM`}
+                            </p>
+                          )}
+                        </Card>
+                      );
+                    })}
+                  </div>
+                  {/* All regions full — show a clear message */}
+                  {regionStock && !regionStock.any && (
+                    <div className="flex items-start gap-2 px-3 py-2.5 text-[10px] font-minecraft text-amber-400 bg-amber-500/10 border border-amber-500/20">
+                      <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                      <span>
+                        All regions are at capacity for these resource settings. Reduce RAM or Disk to see available regions.
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -528,6 +664,54 @@ export function CreateServerWizard() {
                   format={(v) => v >= 100 ? `${(v / 100).toFixed(v % 100 === 0 ? 0 : 1)} cores` : `${v}%`}
                 />
               </div>
+
+              {/* Stock availability banner */}
+              {stockFetching ? (
+                <div className="flex items-center gap-2 p-3 border border-border text-muted-foreground text-xs">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Checking availability…
+                </div>
+              ) : stockError ? (
+                <div className="flex items-center gap-2 p-3 border border-yellow-500/30 bg-yellow-500/5 text-yellow-500 text-xs">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  <span>Could not check availability. You can still try creating — you&apos;ll see an error if the node is full.</span>
+                </div>
+              ) : stock ? (
+                stock.available ? (
+                  <div className="flex items-center gap-2 p-3 border border-primary/30 bg-primary/5 text-primary text-xs">
+                    <CheckCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>
+                      Capacity available. Your server can be created.
+                    </span>
+                  </div>
+                ) : stock.reason === "noCapacity" ? (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 p-3 border border-destructive/40 bg-destructive/5 text-destructive text-xs">
+                      <ServerOff className="w-3.5 h-3.5 shrink-0" />
+                      <span>No nodes have enough free capacity for these specs.</span>
+                    </div>
+                    <div className="text-[10px] text-muted-foreground px-1 space-y-0.5">
+                      {stock.max_free_ram_mb > 0 && stock.max_free_ram_mb < watchedRam && (
+                        <p>• Max available RAM: <span className="text-foreground font-medium">{stock.max_free_ram_mb >= 1024 ? `${(stock.max_free_ram_mb / 1024).toFixed(1)} GB` : `${stock.max_free_ram_mb} MB`}</span> — reduce RAM</p>
+                      )}
+                      {stock.max_free_disk_mb > 0 && stock.max_free_disk_mb < watchedDisk && (
+                        <p>• Max available Disk: <span className="text-foreground font-medium">{stock.max_free_disk_mb >= 1024 ? `${(stock.max_free_disk_mb / 1024).toFixed(1)} GB` : `${stock.max_free_disk_mb} MB`}</span> — reduce disk</p>
+                      )}
+                      {stock.online_nodes === 0 && (
+                        <p>• No nodes are currently online. Contact an admin.</p>
+                      )}
+                      {stock.max_free_ram_mb === 0 && stock.max_free_disk_mb === 0 && stock.online_nodes > 0 && (
+                        <p>• All nodes are at full capacity. An admin can increase overallocation or add a new node.</p>
+                      )}
+                    </div>
+                  </div>
+                ) : stock.reason === "noAllocations" ? (
+                  <div className="flex items-center gap-2 p-3 border border-yellow-500/30 bg-yellow-500/5 text-yellow-500 text-xs">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    <span>Nodes have capacity but no free IP:port slots. An admin needs to add allocations in Admin → Allocations.</span>
+                  </div>
+                ) : null
+              ) : null}
             </motion.div>
           )}
         </AnimatePresence>
@@ -548,12 +732,17 @@ export function CreateServerWizard() {
           ) : (
             <Button
               type="button"
-              disabled={loading}
+              disabled={loading || stockFetching || stockUnavailable}
               className="gap-2"
               onClick={() => form.handleSubmit(onSubmit)()}
+              title={stockUnavailable
+                ? stock?.reason === "noAllocations"
+                  ? "No free IP:port allocations available"
+                  : "No nodes have enough capacity"
+                : undefined}
             >
               {loading && <LoadingSpinner size={14} />}
-              {loading ? "Creating..." : "Create Server"}
+              {loading ? "Creating..." : stockFetching ? "Checking…" : "Create Server"}
             </Button>
           )}
         </div>
