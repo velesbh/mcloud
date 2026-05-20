@@ -20,75 +20,118 @@ import { runDeployment, stopProjectRuntime } from "./webcloud-deploy.js";
 import { ensurePortPoolSeeded } from "./webcloud-port.js";
 
 /**
- * Upsert this node into the DB on startup so it auto-registers.
- * If the node already exists (same NODE_ID), just mark it online.
- * If it doesn't exist yet, create it with all details from env/auto-detect.
+ * Register this node into the DB on startup.
+ *
+ * IMPORTANT: `name` and `region_id` are admin-owned fields — we never
+ * overwrite them after the initial insert so that renames and region
+ * assignments made in the admin panel survive daemon restarts.
+ *
+ * On first run (row doesn't exist yet) → INSERT with all fields.
+ * On subsequent runs (row already exists) → UPDATE only the fields the
+ * daemon owns: hardware specs, status, timestamps. name/region_id untouched.
  */
 async function registerNode() {
-  const payload: Record<string, unknown> = {
-    id: config.nodeId,
-    name: config.nodeName,
-    fqdn: config.nodeFqdn,
-    ip: config.nodeIp,
-    total_ram_mb: config.nodeTotalRamMb,
-    total_cpu: config.nodeTotalCpu,
-    total_disk_mb: config.nodeTotalDiskMb,
-    overallocation_percent: config.nodeOverallocationPercent,
-    status: "online",
-    last_seen_at: new Date().toISOString(),
-  };
-  // Only set region_id when explicitly configured — don't overwrite
-  // an admin-assigned region on daemon restart.
-  if (config.nodeRegionId) payload.region_id = config.nodeRegionId;
-
-  const { error } = await supabase
+  const { data: existing } = await supabase
     .from("nodes")
-    .upsert(payload, { onConflict: "id" });
-  if (error) {
-    log.error("registerNode failed", { error });
-    process.exit(1);
+    .select("id")
+    .eq("id", config.nodeId)
+    .maybeSingle();
+
+  if (existing) {
+    // Row exists — refresh daemon-owned fields only, preserve admin renames
+    const update: Record<string, unknown> = {
+      fqdn: config.nodeFqdn,
+      ip: config.nodeIp,
+      total_ram_mb: config.nodeTotalRamMb,
+      total_cpu: config.nodeTotalCpu,
+      total_disk_mb: config.nodeTotalDiskMb,
+      overallocation_percent: config.nodeOverallocationPercent,
+      status: "online",
+      last_seen_at: new Date().toISOString(),
+    };
+    // Only push region_id when explicitly set in env — still don't clobber
+    // an admin-assigned region if the env var is absent.
+    if (config.nodeRegionId) update.region_id = config.nodeRegionId;
+
+    const { error } = await supabase.from("nodes").update(update).eq("id", config.nodeId);
+    if (error) { log.error("registerNode update failed", { error }); process.exit(1); }
+  } else {
+    // First-time registration — full insert including name
+    const payload: Record<string, unknown> = {
+      id: config.nodeId,
+      name: config.nodeName,
+      fqdn: config.nodeFqdn,
+      ip: config.nodeIp,
+      total_ram_mb: config.nodeTotalRamMb,
+      total_cpu: config.nodeTotalCpu,
+      total_disk_mb: config.nodeTotalDiskMb,
+      overallocation_percent: config.nodeOverallocationPercent,
+      status: "online",
+      last_seen_at: new Date().toISOString(),
+    };
+    if (config.nodeRegionId) payload.region_id = config.nodeRegionId;
+
+    const { error } = await supabase.from("nodes").insert(payload);
+    if (error) { log.error("registerNode insert failed", { error }); process.exit(1); }
   }
+
   log.info("node registered", {
     id: config.nodeId,
-    name: config.nodeName,
     ip: config.nodeIp,
     region: config.nodeRegionId ?? "unassigned",
+    firstRun: !existing,
   });
 }
 
 /**
- * Mirror the node row into the `webcloud` schema. Admin-managed columns
- * (region_id, webcloud_allocation_percent) are deliberately omitted so
- * daemon restarts don't clobber operator choices.
+ * Mirror the node row into the `webcloud` schema.
+ *
+ * Same admin-field preservation rule as registerNode():
+ * - First run → INSERT with name + region_id
+ * - Subsequent runs → UPDATE only daemon-owned fields, leave name/region_id alone
  */
 async function registerWebCloudNode() {
-  const payload: Record<string, unknown> = {
-    id: config.nodeId,
-    name: config.nodeName,
-    fqdn: config.nodeFqdn,
-    total_ram_mb: config.nodeTotalRamMb,
-    total_disk_mb: config.nodeTotalDiskMb,
-    overallocation_percent: config.nodeOverallocationPercent,
-    status: "online",
-    last_heartbeat: new Date().toISOString(),
-  };
-  // region_id MUST be present on first insert (NOT NULL constraint). If the
-  // mcloud daemon was started with NODE_REGION_ID we reuse it; otherwise the
-  // webcloud row stays absent until the admin assigns one and we'll retry
-  // next heartbeat tick.
-  if (config.nodeRegionId) payload.region_id = config.nodeRegionId;
-  else {
+  if (!config.nodeRegionId) {
     log.info("webcloud: skipping node registration — NODE_REGION_ID not set");
     return;
   }
 
-  const { error } = await wcSupabase.from("nodes").upsert(payload, { onConflict: "id" });
-  if (error) {
-    log.warn("registerWebCloudNode failed (non-fatal)", { error: error.message });
-    return;
+  const { data: existing } = await wcSupabase
+    .from("nodes")
+    .select("id")
+    .eq("id", config.nodeId)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await wcSupabase.from("nodes").update({
+      fqdn: config.nodeFqdn,
+      total_ram_mb: config.nodeTotalRamMb,
+      total_disk_mb: config.nodeTotalDiskMb,
+      overallocation_percent: config.nodeOverallocationPercent,
+      status: "online",
+      last_heartbeat: new Date().toISOString(),
+    }).eq("id", config.nodeId);
+    if (error) log.warn("registerWebCloudNode update failed (non-fatal)", { error: error.message });
+  } else {
+    const { error } = await wcSupabase.from("nodes").insert({
+      id: config.nodeId,
+      name: config.nodeName,
+      fqdn: config.nodeFqdn,
+      region_id: config.nodeRegionId,
+      total_ram_mb: config.nodeTotalRamMb,
+      total_disk_mb: config.nodeTotalDiskMb,
+      overallocation_percent: config.nodeOverallocationPercent,
+      status: "online",
+      last_heartbeat: new Date().toISOString(),
+    });
+    if (error) {
+      log.warn("registerWebCloudNode insert failed (non-fatal)", { error: error.message });
+      return;
+    }
   }
+
   await ensurePortPoolSeeded();
-  log.info("webcloud node registered", { id: config.nodeId });
+  log.info("webcloud node registered", { id: config.nodeId, firstRun: !existing });
 }
 
 /**
