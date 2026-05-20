@@ -301,6 +301,12 @@ export default function ServerOverviewPage({
               <span className="text-muted-foreground font-minecraft text-[9px] uppercase">Region</span>
               <span className="font-mono">{server.regions?.flag_emoji ?? ""} {server.regions?.name ?? "—"}</span>
             </div>
+            {server.nodes?.name && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground font-minecraft text-[9px] uppercase">Node</span>
+                <span className="font-mono">{server.nodes.name}</span>
+              </div>
+            )}
             <div className="flex justify-between">
               <span className="text-muted-foreground font-minecraft text-[9px] uppercase">Max players</span>
               <span className="font-mono">{server.max_players}</span>

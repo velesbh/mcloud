@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Package, AlertTriangle, CheckCircle, Loader2, ServerOff, Lock } from "lucide-react";
+import { Package, AlertTriangle, CheckCircle, Loader2, ServerOff, Lock, ExternalLink } from "lucide-react";
 import { ModpackBrowser, type PickedModpack } from "@/components/server/ModpackBrowser";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -93,6 +93,7 @@ export function CreateServerWizard() {
   const [edition, setEdition] = useState<"java" | "bedrock">("java");
   const [modpackOpen, setModpackOpen] = useState(false);
   const [picked, setPicked] = useState<PickedModpack | null>(null);
+  const [eulaAccepted, setEulaAccepted] = useState(false);
   const { maxRamMb, maxDiskMb, maxCpuPercent, planName, planKey } = useFreeTierLimits();
 
   const form = useForm<CreateServerInput>({
@@ -665,6 +666,49 @@ export function CreateServerWizard() {
                 />
               </div>
 
+              {/* Minecraft EULA acceptance — required before creation */}
+              <label
+                className={`flex items-start gap-3 p-3 border cursor-pointer select-none transition-colors ${
+                  eulaAccepted
+                    ? "border-primary/40 bg-primary/5"
+                    : "border-border hover:border-primary/30"
+                }`}
+              >
+                {/* Pixel-style checkbox */}
+                <div
+                  className={`mt-0.5 w-4 h-4 shrink-0 border-2 flex items-center justify-center transition-colors ${
+                    eulaAccepted ? "border-primary bg-primary" : "border-muted-foreground bg-background"
+                  }`}
+                  style={{ borderRadius: 0 }}
+                >
+                  {eulaAccepted && (
+                    <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                      <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="square" />
+                    </svg>
+                  )}
+                </div>
+                <input
+                  type="checkbox"
+                  className="sr-only"
+                  checked={eulaAccepted}
+                  onChange={(e) => setEulaAccepted(e.target.checked)}
+                />
+                <span className="text-[10px] font-minecraft leading-relaxed text-muted-foreground">
+                  I agree to the{" "}
+                  <a
+                    href="https://aka.ms/MinecraftEULA"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-primary underline inline-flex items-center gap-0.5"
+                  >
+                    Minecraft End User License Agreement
+                    <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                  . By creating this server I accept the EULA on behalf of all players.
+                </span>
+              </label>
+
               {/* Stock availability banner */}
               {stockFetching ? (
                 <div className="flex items-center gap-2 p-3 border border-border text-muted-foreground text-xs">
@@ -732,14 +776,18 @@ export function CreateServerWizard() {
           ) : (
             <Button
               type="button"
-              disabled={loading || stockFetching || stockUnavailable}
+              disabled={loading || stockFetching || stockUnavailable || !eulaAccepted}
               className="gap-2"
               onClick={() => form.handleSubmit(onSubmit)()}
-              title={stockUnavailable
-                ? stock?.reason === "noAllocations"
-                  ? "No free IP:port allocations available"
-                  : "No nodes have enough capacity"
-                : undefined}
+              title={
+                !eulaAccepted
+                  ? "You must accept the Minecraft EULA before creating a server"
+                  : stockUnavailable
+                    ? stock?.reason === "noAllocations"
+                      ? "No free IP:port allocations available"
+                      : "No nodes have enough capacity"
+                    : undefined
+              }
             >
               {loading && <LoadingSpinner size={14} />}
               {loading ? "Creating..." : stockFetching ? "Checking…" : "Create Server"}

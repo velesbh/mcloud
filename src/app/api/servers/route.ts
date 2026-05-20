@@ -21,7 +21,7 @@ export async function GET() {
 
   let query = supabase
     .from("servers")
-    .select("*, allocations!servers_allocation_id_fkey(ip, port), regions!servers_region_id_fkey(name, flag_emoji)")
+    .select("*, allocations!servers_allocation_id_fkey(ip, port), regions!servers_region_id_fkey(name, flag_emoji), nodes!servers_node_id_fkey(name)")
     .order("created_at", { ascending: false });
 
   // Hard application-level filter for non-admins — belt AND suspenders with RLS
@@ -144,23 +144,20 @@ export async function POST(req: NextRequest) {
     if (node) {
       const overPct = 1 + (node.overallocation_percent ?? 0) / 100;
       const capacityRam = Math.floor(node.total_ram_mb * overPct);
-      const capacityCpu = Math.floor(node.total_cpu * overPct);
       const capacityDisk = Math.floor(node.total_disk_mb * overPct);
 
       const usedRam = (nodeServers ?? []).reduce((s, srv) => s + srv.ram_mb, 0);
-      const usedCpu = (nodeServers ?? []).reduce((s, srv) => s + srv.cpu_percent, 0);
       const usedDisk = (nodeServers ?? []).reduce((s, srv) => s + srv.disk_mb, 0);
 
       const reserveFraction = premiumReservePercent / 100;
       const freeableRam = capacityRam - usedRam - input.ram_mb;
-      const freeableCpu = capacityCpu - usedCpu - input.cpu_percent;
       const freeableDisk = capacityDisk - usedDisk - input.disk_mb;
 
       const minFreeRam = Math.floor(capacityRam * reserveFraction);
-      const minFreeCpu = Math.floor(capacityCpu * reserveFraction);
       const minFreeDisk = Math.floor(capacityDisk * reserveFraction);
 
-      if (freeableRam < minFreeRam || freeableCpu < minFreeCpu || freeableDisk < minFreeDisk) {
+      // CPU intentionally not checked — it's shared via Docker CFS, not partitioned
+      if (freeableRam < minFreeRam || freeableDisk < minFreeDisk) {
         return NextResponse.json(
           {
             error: "premiumReserved",

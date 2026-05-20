@@ -15,6 +15,9 @@ import { startHibernationCron } from "./hibernation.js";
 import { startMetricsBroadcaster } from "./metrics-broadcaster.js";
 import { handleFileOp } from "./file-ops.js";
 import { handleWorldOp } from "./world-manager.js";
+import { wcSupabase } from "./webcloud-supabase.js";
+import { runDeployment, stopProjectRuntime } from "./webcloud-deploy.js";
+import { ensurePortPoolSeeded } from "./webcloud-port.js";
 
 /**
  * Upsert this node into the DB on startup so it auto-registers.
@@ -54,6 +57,41 @@ async function registerNode() {
 }
 
 /**
+ * Mirror the node row into the `webcloud` schema. Admin-managed columns
+ * (region_id, webcloud_allocation_percent) are deliberately omitted so
+ * daemon restarts don't clobber operator choices.
+ */
+async function registerWebCloudNode() {
+  const payload: Record<string, unknown> = {
+    id: config.nodeId,
+    name: config.nodeName,
+    fqdn: config.nodeFqdn,
+    total_ram_mb: config.nodeTotalRamMb,
+    total_disk_mb: config.nodeTotalDiskMb,
+    overallocation_percent: config.nodeOverallocationPercent,
+    status: "online",
+    last_heartbeat: new Date().toISOString(),
+  };
+  // region_id MUST be present on first insert (NOT NULL constraint). If the
+  // mcloud daemon was started with NODE_REGION_ID we reuse it; otherwise the
+  // webcloud row stays absent until the admin assigns one and we'll retry
+  // next heartbeat tick.
+  if (config.nodeRegionId) payload.region_id = config.nodeRegionId;
+  else {
+    log.info("webcloud: skipping node registration — NODE_REGION_ID not set");
+    return;
+  }
+
+  const { error } = await wcSupabase.from("nodes").upsert(payload, { onConflict: "id" });
+  if (error) {
+    log.warn("registerWebCloudNode failed (non-fatal)", { error: error.message });
+    return;
+  }
+  await ensurePortPoolSeeded();
+  log.info("webcloud node registered", { id: config.nodeId });
+}
+
+/**
  * Periodic heartbeat so admin can detect dead daemons.
  */
 function startHeartbeat() {
@@ -79,9 +117,47 @@ function startHeartbeat() {
     } else {
       consecutiveFailures = 0;
     }
+
+    // Mirror the heartbeat into webcloud.nodes so its stock view marks this
+    // node available. Silently swallow errors (e.g. row not yet inserted
+    // because no region is assigned) — they're already logged at register.
+    await wcSupabase
+      .from("nodes")
+      .update({ status: "online", last_heartbeat: new Date().toISOString() })
+      .eq("id", config.nodeId);
   }
 
   setInterval(() => void beat(), 15_000);
+}
+
+/**
+ * Subscribe to WebCloud-specific commands on `webcloud-node:{node_id}`.
+ *   - "deploy" { deploymentId }  — kick off the full build/deploy pipeline
+ *   - "stop"   { projectId }     — stop a project's runtime container
+ */
+function subscribeWebCloudCommands() {
+  const channel = wcSupabase.channel(`webcloud-node:${config.nodeId}`, {
+    config: { broadcast: { self: false, ack: false } },
+  });
+
+  channel.on("broadcast", { event: "deploy" }, async (msg) => {
+    const id = msg.payload?.deploymentId;
+    if (!id) return;
+    log.info("wc cmd: deploy", { deploymentId: id });
+    // Fire-and-forget — the orchestrator updates DB state itself
+    void runDeployment(id);
+  });
+
+  channel.on("broadcast", { event: "stop" }, async (msg) => {
+    const id = msg.payload?.projectId;
+    if (!id) return;
+    log.info("wc cmd: stop", { projectId: id });
+    await stopProjectRuntime(id);
+  });
+
+  void channel.subscribe((status) => {
+    log.info(`webcloud-node channel: ${status}`);
+  });
 }
 
 /**
@@ -186,10 +262,12 @@ async function subscribeKnownServers() {
 }
 
 async function main() {
-  log.info("MCloud daemon starting", { nodeId: config.nodeId });
+  log.info("MCloud+WebCloud daemon starting", { nodeId: config.nodeId });
   await registerNode();
+  await registerWebCloudNode();
   startHeartbeat();
   subscribeCommands();
+  subscribeWebCloudCommands();
   await subscribeKnownServers();
   startHibernationCron();
   startMetricsBroadcaster();

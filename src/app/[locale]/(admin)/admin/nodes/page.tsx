@@ -25,6 +25,8 @@ export default function NodesPage() {
   const [assignRegion, setAssignRegion] = useState("");
   const [overcommitTarget, setOvercommitTarget] = useState<Node | null>(null);
   const [overcommitValue, setOvercommitValue] = useState(100);
+  const [editTarget, setEditTarget] = useState<Node | null>(null);
+  const [editName, setEditName] = useState("");
   const [saving, setSaving] = useState(false);
 
   const { data: nodes = [], isLoading } = useQuery<(Node & { regions: any })[]>({
@@ -72,6 +74,30 @@ export default function NodesPage() {
     }
   }
 
+  async function saveNodeName() {
+    if (!editTarget || !editName.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/nodes/${editTarget.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editName.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        qc.invalidateQueries({ queryKey: ["nodes"] });
+        toast.success("Node name updated");
+        setEditTarget(null);
+      } else {
+        toast.error(data.error || "Failed to update name");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function saveOvercommit() {
     if (!overcommitTarget) return;
     setSaving(true);
@@ -79,7 +105,7 @@ export default function NodesPage() {
       const res = await fetch(`/api/nodes/${overcommitTarget.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ memory_overcommit_percent: overcommitValue }),
+        body: JSON.stringify({ overallocation_percent: overcommitValue }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -143,6 +169,13 @@ export default function NodesPage() {
                     <p className="text-xs text-muted-foreground font-mono">{node.ip}</p>
                   </div>
                   <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => { setEditTarget(node); setEditName(node.name); }}
+                      className="p-1 text-muted-foreground hover:text-foreground transition-colors"
+                      title="Rename node"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
                     {(() => {
                       const stale = !node.last_seen_at || Date.now() - new Date(node.last_seen_at).getTime() > 75_000;
                       const effectiveStatus = stale ? "offline" : node.status;
@@ -167,10 +200,10 @@ export default function NodesPage() {
                     })()}
                     <button
                       onClick={() => { setOvercommitTarget(node); setOvercommitValue(node.memory_overcommit_percent ?? 100); }}
-                      className="p-1 text-muted-foreground hover:text-foreground transition-colors"
+                      className="p-1 text-muted-foreground hover:text-foreground transition-colors font-mono text-[10px] leading-none px-1.5"
                       title="Edit memory overcommit"
                     >
-                      <Pencil className="w-3.5 h-3.5" />
+                      OC
                     </button>
                     <button
                       onClick={() => { setAssignTarget(node); setAssignRegion(node.region_id ?? ""); }}
@@ -218,6 +251,36 @@ export default function NodesPage() {
           ))}
         </div>
       )}
+
+      {/* Rename Node Dialog */}
+      <Dialog open={!!editTarget} onOpenChange={(o) => !o && setEditTarget(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Rename Node</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
+              <Label>Node name</Label>
+              <Input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="e.g. us-east-1"
+                onKeyDown={(e) => e.key === "Enter" && void saveNodeName()}
+                autoFocus
+              />
+              <p className="text-xs text-muted-foreground">
+                Shown in the admin panel and on server cards.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditTarget(null)}>Cancel</Button>
+            <Button onClick={saveNodeName} disabled={saving || !editName.trim()}>
+              {saving ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Memory Overcommit Dialog */}
       <Dialog open={!!overcommitTarget} onOpenChange={(o) => !o && setOvercommitTarget(null)}>

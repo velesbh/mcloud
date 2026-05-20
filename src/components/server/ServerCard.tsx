@@ -19,6 +19,7 @@ interface ServerCardProps {
   server: ServerType & {
     allocations?: { ip: string; port: number } | null;
     regions?: { name: string; flag_emoji: string | null } | null;
+    nodes?: { name: string } | null;
   };
   index?: number;
   onDeleted?: () => void;
@@ -164,10 +165,13 @@ export function ServerCard({ server, index = 0, onDeleted }: ServerCardProps) {
           </div>
           <div className="flex flex-col items-end gap-1.5 shrink-0">
             <StatusBadge status={currentStatus} />
-            {server.regions?.name && (
+            {(server.regions?.name || server.nodes?.name) && (
               <span className="text-[10px] text-muted-foreground flex items-center gap-1.5 whitespace-nowrap">
                 <CompassIcon size={12} />
-                {server.regions.name}
+                {server.regions?.flag_emoji ? `${server.regions.flag_emoji} ` : ""}
+                {server.regions?.name ?? ""}
+                {server.regions?.name && server.nodes?.name ? " · " : ""}
+                {server.nodes?.name ?? ""}
               </span>
             )}
           </div>
