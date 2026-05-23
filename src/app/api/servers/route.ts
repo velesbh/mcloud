@@ -1,38 +1,80 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { createServerSchema } from "@/lib/validations/server";
 import { getUserQuotas } from "@/lib/billing/quotas";
 import type { Database } from "@/lib/supabase/types";
+
+const serverListSelect =
+  "*, allocations!servers_allocation_id_fkey(ip, port), regions!servers_region_id_fkey(name, flag_emoji), nodes!servers_node_id_fkey(name)";
+type ServerListItem = Database["mcloud"]["Tables"]["servers"]["Row"] & Record<string, unknown>;
 
 export async function GET() {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   // Admins use the service-role client and see all servers (for the admin panel).
-  // Regular users always get an explicit clerk_user_id filter — never rely on RLS alone.
+  // Regular users get explicit owner/collaborator filters — never rely on RLS alone.
   const { isAdmin } = await import("@/lib/clerk/auth");
   const adminAccess = await isAdmin();
+  const adminSupabase = createAdminSupabaseClient();
 
-  const supabase = adminAccess
-    ? createAdminSupabaseClient()
-    : await createServerSupabaseClient();
+  if (adminAccess) {
+    const { data, error } = await adminSupabase
+      .from("servers")
+      .select(serverListSelect)
+      .order("created_at", { ascending: false });
 
-  let query = supabase
-    .from("servers")
-    .select("*, allocations!servers_allocation_id_fkey(ip, port), regions!servers_region_id_fkey(name, flag_emoji), nodes!servers_node_id_fkey(name)")
-    .order("created_at", { ascending: false });
-
-  // Hard application-level filter for non-admins — belt AND suspenders with RLS
-  if (!adminAccess) {
-    query = query.eq("clerk_user_id", userId);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(data ?? []);
   }
 
-  const { data, error } = await query;
+  const { data: collaboratorRows, error: collaboratorError } = await adminSupabase
+    .from("server_collaborators")
+    .select("server_id")
+    .eq("clerk_user_id", userId);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data ?? []);
+  if (collaboratorError) {
+    return NextResponse.json({ error: collaboratorError.message }, { status: 500 });
+  }
+
+  const collaboratorServerIds = Array.from(
+    new Set((collaboratorRows ?? []).map((row) => row.server_id))
+  );
+
+  const [ownedResult, collaboratorServersResult] = await Promise.all([
+    adminSupabase
+      .from("servers")
+      .select(serverListSelect)
+      .eq("clerk_user_id", userId),
+    collaboratorServerIds.length > 0
+      ? adminSupabase
+          .from("servers")
+          .select(serverListSelect)
+          .in("id", collaboratorServerIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (ownedResult.error) {
+    return NextResponse.json({ error: ownedResult.error.message }, { status: 500 });
+  }
+  if (collaboratorServersResult.error) {
+    return NextResponse.json({ error: collaboratorServersResult.error.message }, { status: 500 });
+  }
+
+  const byId = new Map<string, ServerListItem>();
+  for (const server of ownedResult.data ?? []) {
+    byId.set(server.id, server as ServerListItem);
+  }
+  for (const server of collaboratorServersResult.data ?? []) {
+    byId.set(server.id, server as ServerListItem);
+  }
+
+  const servers = Array.from(byId.values()).sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+
+  return NextResponse.json(servers);
 }
 
 export async function POST(req: NextRequest) {
