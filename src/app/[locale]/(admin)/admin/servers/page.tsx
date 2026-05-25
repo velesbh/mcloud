@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Play, Square, RotateCcw, Zap, ArrowRightLeft, WifiOff, Upload, Network, Pencil } from "lucide-react";
+import { Play, Square, RotateCcw, Zap, ArrowRightLeft, WifiOff, Upload, Network, Pencil, Plus, Sparkles } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { useLocale } from "next-intl";
@@ -190,12 +190,20 @@ export default function AdminServersPage() {
           title="All Servers"
           description={`${servers.length} total servers`}
           action={
-            <Link href={`/${locale}/admin/servers/import`}>
-              <Button className="gap-2" size="sm">
-                <Upload className="w-4 h-4" />
-                Import Server
-              </Button>
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link href={`/${locale}/admin/servers/create`}>
+                <Button className="gap-2" size="sm">
+                  <Plus className="w-4 h-4" />
+                  Create Server
+                </Button>
+              </Link>
+              <Link href={`/${locale}/admin/servers/import`}>
+                <Button className="gap-2" size="sm" variant="outline">
+                  <Upload className="w-4 h-4" />
+                  Import Server
+                </Button>
+              </Link>
+            </div>
           }
         />
 
@@ -225,7 +233,19 @@ export default function AdminServersPage() {
 
                 return (
                   <TableRow key={server.id} className={nodeOffline ? "opacity-60" : ""}>
-                    <TableCell className="font-medium text-sm">{server.name}</TableCell>
+                    <TableCell className="font-medium text-sm">
+                      <div className="flex items-center gap-1.5">
+                        {server.name}
+                        {(server as any).is_premium && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                            </TooltipTrigger>
+                            <TooltipContent>Premium — exempt from hibernation</TooltipContent>
+                          </Tooltip>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-xs text-muted-foreground font-mono">
                       {server.clerk_user_id.slice(0, 12)}…
                     </TableCell>
@@ -344,6 +364,35 @@ export default function AdminServersPage() {
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>Force claim a free port</TooltipContent>
+                        </Tooltip>
+
+                        {/* Toggle Premium */}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className={`h-7 w-7 ${(server as any).is_premium ? "text-amber-400 hover:text-amber-300" : "text-muted-foreground hover:text-amber-400"}`}
+                              onClick={async () => {
+                                const next = !(server as any).is_premium;
+                                const res = await fetch(`/api/admin/servers/${server.id}`, {
+                                  method: "PATCH",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ is_premium: next }),
+                                });
+                                if (res.ok) {
+                                  toast.success(next ? `${server.name} is now Premium` : `${server.name} is no longer Premium`);
+                                  qc.invalidateQueries({ queryKey: ["admin-servers"] });
+                                } else {
+                                  const d = await res.json().catch(() => ({}));
+                                  toast.error(d.error ?? "Failed to update");
+                                }
+                              }}
+                            >
+                              <Sparkles className="w-3.5 h-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>{(server as any).is_premium ? "Premium: remove (will resume hibernation)" : "Mark as Premium (no hibernation)"}</TooltipContent>
                         </Tooltip>
 
                         {/* Edit Allocation */}

@@ -254,6 +254,7 @@ export interface Database {
           last_started_at: string | null;
           last_active_at: string | null;
           hibernated_at: string | null;
+          is_premium: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -281,6 +282,7 @@ export interface Database {
           last_started_at?: string | null;
           last_active_at?: string | null;
           hibernated_at?: string | null;
+          is_premium?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -308,6 +310,7 @@ export interface Database {
           last_started_at?: string | null;
           last_active_at?: string | null;
           hibernated_at?: string | null;
+          is_premium?: boolean;
           updated_at?: string;
         };
         Relationships: [];

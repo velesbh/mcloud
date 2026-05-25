@@ -21,13 +21,46 @@ const FREE_QUOTAS: ResolvedQuotas = {
   plan_name: "Free",
 };
 
-// Walks every visible billing plan and returns the most generous one the user has via Clerk billing.
-// Falls back to the FREE_TIER env values.
+// "Infinite" — large enough that any user-facing slider/validator will allow
+// whatever value the user types, but still a regular JS integer (Infinity
+// would break JSON.stringify / number columns).
+export const UNLIMITED = 1_000_000_000;
+
+export const UNLIMITED_QUOTAS: ResolvedQuotas = {
+  max_servers: UNLIMITED,
+  max_ram_mb: UNLIMITED,
+  max_disk_mb: UNLIMITED,
+  max_cpu_percent: UNLIMITED,
+  plan_key: "unlimited",
+  plan_name: "Unlimited",
+};
+
+// Walks every visible billing plan and returns the most generous one the user
+// has via Clerk billing. Falls back to FREE_TIER env values.
+//
+// Admins and users with a non-free profile.plan_tier get UNLIMITED resources
+// — they bypass per-plan caps entirely. (Per explicit product requirement:
+// "admin have infinite resources as well as premium".)
 export async function getUserQuotas(): Promise<ResolvedQuotas> {
   const { userId, has } = await auth();
   if (!userId || !has) return FREE_QUOTAS;
 
   const supabase = createAdminSupabaseClient();
+
+  // Profile-level overrides first.
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role, plan_tier")
+    .eq("clerk_user_id", userId)
+    .maybeSingle();
+
+  if (profile?.role === "admin") {
+    return { ...UNLIMITED_QUOTAS, plan_name: "Admin (Unlimited)" };
+  }
+  if (profile?.plan_tier && profile.plan_tier !== "free") {
+    return { ...UNLIMITED_QUOTAS, plan_key: profile.plan_tier, plan_name: "Premium (Unlimited)" };
+  }
+
   const { data: plans } = await supabase
     .from("billing_plans")
     .select("*")
@@ -46,16 +79,8 @@ export async function getUserQuotas(): Promise<ResolvedQuotas> {
       }
     })();
     if (!hasPlan) continue;
-    if (plan.max_ram_mb > best.max_ram_mb) {
-      best = {
-        max_servers: plan.max_servers,
-        max_ram_mb: plan.max_ram_mb,
-        max_disk_mb: plan.max_disk_mb,
-        max_cpu_percent: plan.max_cpu_percent,
-        plan_key: plan.plan_key,
-        plan_name: plan.name,
-      };
-    }
+    // Anyone on a paid Clerk plan also gets unlimited per the product rule above.
+    return { ...UNLIMITED_QUOTAS, plan_key: plan.plan_key, plan_name: `${plan.name} (Unlimited)` };
   }
   return best;
 }

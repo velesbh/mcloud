@@ -18,28 +18,32 @@ interface Candidate {
   allocation_id: string | null;
   hibernated_at: string | null;
   plan_tier: string | null;
+  role: string | null;
+  is_premium: boolean;
 }
 
 async function fetchOurServers(): Promise<Candidate[]> {
   const { data, error } = await supabase
     .from("servers")
-    .select("id, user_id, last_active_at, status, node_id, allocation_id, hibernated_at")
+    .select("id, user_id, last_active_at, status, node_id, allocation_id, hibernated_at, is_premium")
     .eq("node_id", config.nodeId);
   if (error) {
     log.error("hibernation: fetch failed", { error });
     return [];
   }
 
-  // Look up plan tiers in bulk (one extra query beats N+1)
+  // Look up plan tier + role in bulk (one extra query beats N+1)
   const userIds = [...new Set((data ?? []).map((r: any) => r.user_id).filter(Boolean))];
   const planMap: Record<string, string> = {};
+  const roleMap: Record<string, string> = {};
   if (userIds.length > 0) {
     const { data: profiles } = await supabase
       .from("profiles")
-      .select("clerk_user_id, plan_tier")
+      .select("clerk_user_id, plan_tier, role")
       .in("clerk_user_id", userIds);
     for (const p of profiles ?? []) {
       planMap[p.clerk_user_id] = (p as any).plan_tier ?? "free";
+      roleMap[p.clerk_user_id] = (p as any).role ?? "user";
     }
   }
 
@@ -52,6 +56,8 @@ async function fetchOurServers(): Promise<Candidate[]> {
     allocation_id: r.allocation_id,
     hibernated_at: r.hibernated_at,
     plan_tier: planMap[r.user_id] ?? "free",
+    role: roleMap[r.user_id] ?? "user",
+    is_premium: r.is_premium === true,
   }));
 }
 
@@ -91,7 +97,13 @@ async function runOnce() {
   for (const s of servers) {
     const last = s.last_active_at ? new Date(s.last_active_at).getTime() : 0;
     const idleMs = last ? now - last : Infinity;
-    const isFree = (s.plan_tier ?? "free") === "free";
+    // Premium servers and admin-owned servers are exempt from hibernation
+    // and the 30-day idle deletion sweep. Same for users on a paid plan.
+    const isExempt =
+      s.is_premium === true ||
+      s.role === "admin" ||
+      (s.plan_tier ?? "free") !== "free";
+    const isFree = !isExempt;
 
     if (s.status === "hibernated") {
       const since = s.hibernated_at ? new Date(s.hibernated_at).getTime() : 0;
