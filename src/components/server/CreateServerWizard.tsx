@@ -16,7 +16,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils";
 import { createServerSchema, type CreateServerInput } from "@/lib/validations/server";
 import {
-  MC_BEDROCK_VERSIONS,
   JAVA_LOADERS,
   BEDROCK_LOADERS,
   FREE_TIER,
@@ -207,20 +206,23 @@ export function CreateServerWizard() {
   const stockUnavailable = !stockFetching && !stockError && !!stock && !stock.available;
 
   const watchedLoader = form.watch("loader");
-  const { data: javaVersions = [], isLoading: versionsLoading } = useMcVersions(
+  const { data: javaVersions = [], isLoading: javaLoading } = useMcVersions(
     edition === "java" ? watchedLoader : "vanilla"
   );
-  const versions = edition === "java" ? javaVersions : MC_BEDROCK_VERSIONS;
+  const { data: bedrockVersions = [], isLoading: bedrockLoading } = useMcVersions("bedrock");
+  const versions = edition === "java" ? javaVersions : bedrockVersions;
+  const versionsLoading = edition === "java" ? javaLoading : bedrockLoading;
   const loaders = edition === "java" ? JAVA_LOADERS : BEDROCK_LOADERS;
 
-  // When loader changes and current version isn't in the new list, pick the first available
+  // When the version list changes and the current selection is no longer in it,
+  // snap to the first available (works for both editions).
   useEffect(() => {
-    if (edition !== "java" || javaVersions.length === 0) return;
+    if (versions.length === 0) return;
     const cur = form.getValues("game_version");
-    if (!javaVersions.includes(cur)) {
-      form.setValue("game_version", javaVersions[0], { shouldValidate: false });
+    if (!versions.includes(cur)) {
+      form.setValue("game_version", versions[0], { shouldValidate: false });
     }
-  }, [javaVersions]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [versions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function onSubmit(data: CreateServerInput) {
     setLoading(true);

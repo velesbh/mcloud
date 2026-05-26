@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useLocale } from "next-intl";
@@ -13,7 +13,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { LoadingSpinner } from "@/components/shared/MinecraftLoader";
-import { MC_JAVA_VERSIONS, MC_BEDROCK_VERSIONS, JAVA_LOADERS } from "@/lib/constants";
+import { JAVA_LOADERS, BEDROCK_LOADERS } from "@/lib/constants";
+import { useMcVersions } from "@/hooks/useMcVersions";
 import { formatMb } from "@/lib/utils";
 import type { Node } from "@/lib/supabase/types";
 
@@ -25,7 +26,7 @@ export default function AdminCreateServerPage() {
   const [ownerClerkUserId, setOwnerClerkUserId] = useState("");
   const [nodeId, setNodeId] = useState<string>("");      // "" => auto
   const [edition, setEdition] = useState<"java" | "bedrock">("java");
-  const [gameVersion, setGameVersion] = useState<string>(MC_JAVA_VERSIONS[0]);
+  const [gameVersion, setGameVersion] = useState<string>("");
   const [loader, setLoader] = useState<string>("vanilla");
   const [ramMb, setRamMb] = useState(2048);
   const [diskMb, setDiskMb] = useState(10240);
@@ -42,10 +43,22 @@ export default function AdminCreateServerPage() {
     queryFn: () => fetch("/api/nodes").then((r) => r.json()),
   });
 
-  const versionList = edition === "bedrock" ? MC_BEDROCK_VERSIONS : MC_JAVA_VERSIONS;
-  const loaderList = edition === "bedrock"
-    ? [{ id: "bedrock", label: "Bedrock", desc: "Official Bedrock server" }]
-    : JAVA_LOADERS;
+  // Live versions from mcjarfiles.com — always up-to-date
+  const { data: javaVersions = [], isLoading: javaLoading } = useMcVersions(
+    edition === "java" ? loader : "vanilla"
+  );
+  const { data: bedrockVersions = [], isLoading: bedrockLoading } = useMcVersions("bedrock");
+  const versionList = edition === "bedrock" ? bedrockVersions : javaVersions;
+  const versionsLoading = edition === "bedrock" ? bedrockLoading : javaLoading;
+
+  // Auto-select first version when the list loads or the loader changes
+  useEffect(() => {
+    if (versionList.length > 0 && (!gameVersion || !versionList.includes(gameVersion))) {
+      setGameVersion(versionList[0]);
+    }
+  }, [versionList]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loaderList = edition === "bedrock" ? BEDROCK_LOADERS : JAVA_LOADERS;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -147,7 +160,7 @@ export default function AdminCreateServerPage() {
               <Label className="text-xs">Edition</Label>
               <Select value={edition} onValueChange={(v: "java" | "bedrock") => {
                 setEdition(v);
-                setGameVersion(v === "bedrock" ? MC_BEDROCK_VERSIONS[0] : MC_JAVA_VERSIONS[0]);
+                setGameVersion(""); // will be auto-filled by useEffect when list loads
                 setLoader(v === "bedrock" ? "bedrock" : "vanilla");
               }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -158,9 +171,9 @@ export default function AdminCreateServerPage() {
               </Select>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Version</Label>
-              <Select value={gameVersion} onValueChange={setGameVersion}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Label className="text-xs">Version {versionsLoading && <span className="text-muted-foreground font-normal">(loading…)</span>}</Label>
+              <Select value={gameVersion} onValueChange={setGameVersion} disabled={versionsLoading || versionList.length === 0}>
+                <SelectTrigger><SelectValue placeholder={versionsLoading ? "Loading…" : "Select version"} /></SelectTrigger>
                 <SelectContent>
                   {versionList.map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}
                 </SelectContent>
@@ -168,7 +181,7 @@ export default function AdminCreateServerPage() {
             </div>
             <div className="space-y-1 col-span-2">
               <Label className="text-xs">Loader</Label>
-              <Select value={loader} onValueChange={setLoader}>
+              <Select value={loader} onValueChange={(v) => { setLoader(v); setGameVersion(""); }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {loaderList.map((l) => (
