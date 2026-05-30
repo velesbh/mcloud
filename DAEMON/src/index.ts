@@ -84,54 +84,16 @@ async function registerNode() {
 }
 
 /**
- * Mirror the node row into the `webcloud` schema.
+ * WebCloud node setup.
  *
- * Same admin-field preservation rule as registerNode():
- * - First run → INSERT with name + region_id
- * - Subsequent runs → UPDATE only daemon-owned fields, leave name/region_id alone
+ * Migration 007 replaces webcloud.nodes with a view over mcloud.nodes, so
+ * the mcloud registerNode() above already maintains the node row — no need
+ * to duplicate that write here. We only seed the port pool for WebCloud's
+ * port-allocation system.
  */
 async function registerWebCloudNode() {
-  if (!config.nodeRegionId) {
-    log.info("webcloud: skipping node registration — NODE_REGION_ID not set");
-    return;
-  }
-
-  const { data: existing } = await wcSupabase
-    .from("nodes")
-    .select("id")
-    .eq("id", config.nodeId)
-    .maybeSingle();
-
-  if (existing) {
-    const { error } = await wcSupabase.from("nodes").update({
-      fqdn: config.nodeFqdn,
-      total_ram_mb: config.nodeTotalRamMb,
-      total_disk_mb: config.nodeTotalDiskMb,
-      overallocation_percent: config.nodeOverallocationPercent,
-      status: "online",
-      last_heartbeat: new Date().toISOString(),
-    }).eq("id", config.nodeId);
-    if (error) log.warn("registerWebCloudNode update failed (non-fatal)", { error: error.message });
-  } else {
-    const { error } = await wcSupabase.from("nodes").insert({
-      id: config.nodeId,
-      name: config.nodeName,
-      fqdn: config.nodeFqdn,
-      region_id: config.nodeRegionId,
-      total_ram_mb: config.nodeTotalRamMb,
-      total_disk_mb: config.nodeTotalDiskMb,
-      overallocation_percent: config.nodeOverallocationPercent,
-      status: "online",
-      last_heartbeat: new Date().toISOString(),
-    });
-    if (error) {
-      log.warn("registerWebCloudNode insert failed (non-fatal)", { error: error.message });
-      return;
-    }
-  }
-
   await ensurePortPoolSeeded();
-  log.info("webcloud node registered", { id: config.nodeId, firstRun: !existing });
+  log.info("webcloud port pool ready", { nodeId: config.nodeId });
 }
 
 /**
@@ -161,13 +123,8 @@ function startHeartbeat() {
       consecutiveFailures = 0;
     }
 
-    // Mirror the heartbeat into webcloud.nodes so its stock view marks this
-    // node available. Silently swallow errors (e.g. row not yet inserted
-    // because no region is assigned) — they're already logged at register.
-    await wcSupabase
-      .from("nodes")
-      .update({ status: "online", last_heartbeat: new Date().toISOString() })
-      .eq("id", config.nodeId);
+    // Note: webcloud.nodes is now a view over mcloud.nodes (migration 007).
+    // The mcloud heartbeat above already updates last_seen_at on that row.
   }
 
   setInterval(() => void beat(), 15_000);

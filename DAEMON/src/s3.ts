@@ -15,12 +15,15 @@
  * fall back to Supabase Storage or another mechanism.
  */
 
+import fs from "node:fs/promises";
+import path from "node:path";
 import {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -107,4 +110,59 @@ export async function s3Exists(key: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Download all objects under `prefix` from `bucket` into `destDir`,
+ * preserving the relative path structure.
+ *
+ * Used by webcloud-deploy to pull project files from the webcloud S3 bucket
+ * (which may be different from the mcloud S3_BUCKET).
+ *
+ * @param prefix   e.g. "projects/{projectId}/"
+ * @param destDir  local directory to write files into
+ * @param bucket   S3 bucket to read from (defaults to S3_BUCKET env var)
+ * @returns        number of files downloaded
+ */
+export async function downloadPrefix(
+  prefix: string,
+  destDir: string,
+  bucket = S3_BUCKET
+): Promise<number> {
+  const client = getClient();
+  let count = 0;
+  let continuationToken: string | undefined;
+
+  do {
+    const list = await client.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+      })
+    );
+
+    for (const obj of list.Contents ?? []) {
+      if (!obj.Key || obj.Key.endsWith("/")) continue; // skip directory markers
+
+      const relPath = obj.Key.slice(prefix.length);
+      const localPath = path.join(destDir, relPath);
+
+      await fs.mkdir(path.dirname(localPath), { recursive: true });
+
+      const get = await client.send(
+        new GetObjectCommand({ Bucket: bucket, Key: obj.Key })
+      );
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of get.Body as AsyncIterable<Uint8Array>) {
+        chunks.push(chunk);
+      }
+      await fs.writeFile(localPath, Buffer.concat(chunks));
+      count++;
+    }
+
+    continuationToken = list.NextContinuationToken;
+  } while (continuationToken);
+
+  return count;
 }

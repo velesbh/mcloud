@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { downloadPrefix, isS3Configured } from "./s3.js";
 import { wcSupabase } from "./webcloud-supabase.js";
 import { wcConfig } from "./webcloud-config.js";
 import { log } from "./logger.js";
@@ -77,16 +78,39 @@ export async function runDeployment(deploymentId: string): Promise<void> {
     if (!hostPort) throw new Error("no free host ports on this node");
     logger.emit(`Reserved host port ${hostPort}`, "system");
 
-    // 3. Clone
-    if (!project.repo_url) throw new Error("project has no repo_url");
+    // 3. Source — either S3 upload or git clone
     const branch = dep.branch ?? project.branch ?? "main";
-    const { workspaceDir, ok: cloneOk } = await cloneRepo({
-      deploymentId,
-      repoUrl: project.repo_url,
-      branch,
-      logger,
-    });
-    if (!cloneOk) throw new Error("git clone failed");
+    let workspaceDir: string;
+
+    if (project.upload_source) {
+      // File-upload project: pull files from S3
+      if (!isS3Configured()) {
+        throw new Error(
+          "upload_source=true but S3 is not configured on this daemon " +
+          "(set S3_ACCESS_KEY + S3_SECRET_KEY + S3_ENDPOINT + WEBCLOUD_S3_BUCKET)"
+        );
+      }
+      const wcBucket = process.env.WEBCLOUD_S3_BUCKET ?? process.env.S3_BUCKET ?? "webcloud-project-files";
+      logger.emit(`Pulling project files from S3 (bucket: ${wcBucket})…`, "system");
+      workspaceDir = wcConfig.deploymentDir(deploymentId);
+      await fs.mkdir(workspaceDir, { recursive: true });
+      const count = await downloadPrefix(`projects/${project.id}/`, workspaceDir, wcBucket);
+      if (count === 0) {
+        throw new Error("No files found in S3. Upload your project files first.");
+      }
+      logger.emit(`Pulled ${count} file(s) from S3.`, "system");
+    } else {
+      // Git-source project: clone the repository
+      if (!project.repo_url) throw new Error("project has no repo_url — set one in Settings");
+      const { workspaceDir: cloneDir, ok: cloneOk } = await cloneRepo({
+        deploymentId,
+        repoUrl: project.repo_url,
+        branch,
+        logger,
+      });
+      if (!cloneOk) throw new Error("git clone failed");
+      workspaceDir = cloneDir;
+    }
 
     // 4. Build
     const spec = specFor(project.framework);
